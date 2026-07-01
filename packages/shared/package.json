@@ -1,0 +1,25 @@
+{
+  "name": "@petra/shared",
+  "version": "1.0.0",
+  "description": "Shared logic and types for Petra AI",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.5.0",
+    "zustand": "^4.4.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.6",
+    "@types/node": "^20.5.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  }
+}

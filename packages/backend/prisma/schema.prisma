@@ -1,0 +1,425 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User and Authentication
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  firstName         String
+  lastName          String
+  passwordHash      String
+  isEmailVerified   Boolean   @default(false)
+  emailVerificationToken String?
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  subscriptionTier  SubscriptionTier @default(FREE)
+  avatarUrl         String?
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  profile           UserProfile?
+  pantryItems       PantryItem[]
+  recipes           Recipe[]
+  mealPlans         MealPlan[]
+  shoppingLists     ShoppingList[]
+  chatSessions      ChatSession[]
+  favorites         UserFavorite[]
+  ratings           UserRating[]
+  subscriptions     Subscription[]
+  payments          Payment[]
+
+  @@map("users")
+}
+
+model Subscription {
+  id          String           @id @default(uuid())
+  userId      String
+  tier        SubscriptionTier
+  startDate   DateTime         @default(now())
+  endDate     DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  userId    String
+  amount    Float
+  currency  String        @default("usd")
+  status    PaymentStatus @default(PENDING)
+  provider  String?
+  externalId String?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model UserProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  age                 Int?
+  height              Float?   // in cm
+  weight              Float?   // in kg
+  activityLevel       ActivityLevel?
+  dietaryRestrictions String[] @default([])
+  allergies           String[] @default([])
+  healthGoals         HealthGoal[] @default([])
+  cuisinePreferences  String[] @default([])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// Recipe System
+model Recipe {
+  id            String       @id @default(uuid())
+  title         String
+  description   String?
+  imageUrl      String?
+  servings      Int
+  prepTime      Int          // in minutes
+  cookTime      Int          // in minutes
+  totalTime     Int          // in minutes
+  difficulty    Difficulty
+  cuisine       String?
+  dietaryTags   String[]     @default([])
+  rating        Float?       @default(0)
+  reviewCount   Int          @default(0)
+  createdById   String?
+  isAIGenerated Boolean      @default(false)
+  source        String?
+  isPublic      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  createdBy     User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  ingredients   RecipeIngredient[]
+  instructions  RecipeInstruction[]
+  nutrition     RecipeNutrition?
+  favorites     UserFavorite[]
+  ratings       UserRating[]
+  mealPlanMeals MealPlanMeal[]
+
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id       String @id @default(uuid())
+  recipeId String
+  name     String
+  amount   Float
+  unit     String
+  notes    String?
+  order    Int
+
+  // Relations
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_ingredients")
+}
+
+model RecipeInstruction {
+  id          String @id @default(uuid())
+  recipeId    String
+  step        Int
+  instruction String
+  duration    Int?   // in minutes
+  
+  // Relations
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_instructions")
+}
+
+model RecipeNutrition {
+  id       String @id @default(uuid())
+  recipeId String @unique
+  calories Float
+  protein  Float  // in grams
+  carbs    Float  // in grams
+  fat      Float  // in grams
+  fiber    Float?
+  sugar    Float?
+  sodium   Float? // in mg
+
+  // Relations
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_nutrition")
+}
+
+// Pantry Management
+model PantryItem {
+  id                 String       @id @default(uuid())
+  userId             String
+  name               String
+  category           ItemCategory
+  quantity           Float
+  unit               String
+  location           StorageLocation @default(PANTRY)
+  purchaseDate       DateTime?
+  expirationDate     DateTime?
+  barcode            String?
+  brand              String?
+  notes              String?
+  imageUrl           String?
+  isLowStock         Boolean      @default(false)
+  lowStockThreshold  Float        @default(1)
+  nutritionPer100g   Json?        // Flexible nutrition data
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("pantry_items")
+}
+
+// Meal Planning
+model MealPlan {
+  id              String    @id @default(uuid())
+  userId          String
+  name            String
+  description     String?
+  startDate       DateTime
+  endDate         DateTime
+  isTemplate      Boolean   @default(false)
+  tags            String[]  @default([])
+  targetNutrition Json?     // Daily nutrition targets
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meals MealPlanMeal[]
+  shoppingLists ShoppingList[]
+
+  @@map("meal_plans")
+}
+
+model MealPlanMeal {
+  id         String   @id @default(uuid())
+  mealPlanId String
+  date       DateTime @db.Date
+  mealType   MealType
+  recipeId   String?
+  customName String?  // for non-recipe meals
+  servings   Int      @default(1)
+  notes      String?
+
+  // Relations
+  mealPlan MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  recipe   Recipe?  @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@unique([mealPlanId, date, mealType])
+  @@map("meal_plan_meals")
+}
+
+// Shopping Lists
+model ShoppingList {
+  id            String    @id @default(uuid())
+  userId        String
+  name          String
+  description   String?
+  mealPlanId    String?   // if generated from meal plan
+  isTemplate    Boolean   @default(false)
+  estimatedTotal Float?
+  targetStore   String?
+  tags          String[]  @default([])
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealPlan MealPlan?           @relation(fields: [mealPlanId], references: [id], onDelete: SetNull)
+  items    ShoppingListItem[]
+
+  @@map("shopping_lists")
+}
+
+model ShoppingListItem {
+  id             String       @id @default(uuid())
+  shoppingListId String
+  name           String
+  quantity       Float
+  unit           String
+  category       ItemCategory
+  isCompleted    Boolean      @default(false)
+  estimatedPrice Float?
+  notes          String?
+  recipeId       String?      // if item is from a recipe
+  recipeName     String?
+  priority       Priority     @default(MEDIUM)
+  store          String?
+
+  // Relations
+  shoppingList ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+
+  @@map("shopping_list_items")
+}
+
+// Chat System
+model ChatSession {
+  id        String    @id @default(uuid())
+  userId    String
+  title     String?
+  context   Json?     // User preferences, pantry items, etc.
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id          String      @id @default(uuid())
+  sessionId   String
+  role        MessageRole
+  content     Json        // Array of content objects (text, images, etc.)
+  timestamp   DateTime    @default(now())
+  isStreaming Boolean     @default(false)
+  metadata    Json?       // Model info, tokens, processing time, etc.
+
+  // Relations
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+// User Interactions
+model UserFavorite {
+  id       String @id @default(uuid())
+  userId   String
+  recipeId String
+  createdAt DateTime @default(now())
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+  @@map("user_favorites")
+}
+
+model UserRating {
+  id       String @id @default(uuid())
+  userId   String
+  recipeId String
+  rating   Int    @db.SmallInt // 1-5 stars
+  review   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+  @@map("user_ratings")
+}
+
+// Enums
+enum SubscriptionTier {
+  FREE
+  PREMIUM
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHTLY_ACTIVE
+  MODERATELY_ACTIVE
+  VERY_ACTIVE
+  EXTREMELY_ACTIVE
+}
+
+enum HealthGoal {
+  WEIGHT_LOSS
+  WEIGHT_GAIN
+  MUSCLE_GAIN
+  MAINTENANCE
+  HEART_HEALTH
+  DIABETES_MANAGEMENT
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum ItemCategory {
+  PRODUCE
+  DAIRY
+  MEAT
+  SEAFOOD
+  GRAINS
+  PANTRY_STAPLES
+  SPICES
+  CONDIMENTS
+  BEVERAGES
+  FROZEN
+  CANNED
+  SNACKS
+  OTHER
+}
+
+enum StorageLocation {
+  PANTRY
+  FRIDGE
+  FREEZER
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}

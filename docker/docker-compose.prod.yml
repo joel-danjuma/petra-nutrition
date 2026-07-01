@@ -1,0 +1,179 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.backend
+      target: production
+    container_name: petra-backend-prod
+    restart: unless-stopped
+    env_file:
+      - .env.backend.prod
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    volumes:
+      - ../logs/backend:/app/logs
+      - ../uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - petra-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Web Frontend Service
+  web:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.web
+      target: production
+    container_name: petra-web-prod
+    restart: unless-stopped
+    env_file:
+      - .env.web.prod
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - petra-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: petra-postgres-prod
+    restart: unless-stopped
+    env_file:
+      - .env.postgres.prod
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ../backups/postgres:/backups
+    networks:
+      - petra-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: petra-redis-prod
+    restart: unless-stopped
+    env_file:
+      - .env.redis.prod
+    volumes:
+      - redis_prod_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - petra-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:stable-alpine
+    container_name: petra-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+      - ../uploads:/var/www/uploads:ro
+    depends_on:
+      - web
+      - backend
+    networks:
+      - petra-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Database Backup Service
+  backup:
+    image: postgres:15-alpine
+    container_name: petra-backup-prod
+    restart: "no"
+    env_file:
+      - .env.postgres.prod
+    volumes:
+      - ../backups/postgres:/backups
+    networks:
+      - petra-network
+    depends_on:
+      - postgres
+    command: >
+      sh -c "
+      while true; do
+        pg_dump -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB > /backups/backup_$$(date +%Y%m%d_%H%M%S).sql
+        find /backups -name 'backup_*.sql' -mtime +7 -delete
+        sleep 86400
+      done
+      "
+
+  # Log Aggregation (Optional)
+  log-aggregator:
+    image: fluent/fluent-bit:latest
+    container_name: petra-logs-prod
+    restart: unless-stopped
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ../logs:/var/log/app:ro
+      - ./nginx/logs:/var/log/nginx:ro
+    networks:
+      - petra-network
+    depends_on:
+      - backend
+      - web
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  redis_prod_data:
+    driver: local
+
+networks:
+  petra-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Development
+  postgres:
+    image: postgres:15-alpine
+    container_name: petra-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: petra_ai_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - petra-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d petra_ai_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache for Development
+  redis:
+    image: redis:7-alpine
+    container_name: petra-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - petra-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Adminer for Database Management
+  adminer:
+    image: adminer:latest
+    container_name: petra-adminer-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - petra-dev-network
+    depends_on:
+      - postgres
+
+  # Redis Commander for Redis Management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: petra-redis-commander-dev
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    networks:
+      - petra-dev-network
+    depends_on:
+      - redis
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  petra-dev-network:
+    driver: bridge
