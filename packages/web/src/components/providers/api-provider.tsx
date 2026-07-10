@@ -1,32 +1,20 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
-import { ApiClient } from '@petra/shared';
-import { StoreProvider, initializeStores } from '@petra/shared';
+import { ReactNode } from 'react';
+import { ApiClient, StoreProvider, initializeStores } from '@petra/shared';
 
-interface ApiProviderProps {
-  children: ReactNode;
-}
+const apiClient = new ApiClient({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  timeout: 30000,
+  onTokenExpired: () => { window.location.href = '/auth/login'; },
+  onUnauthorized: () => { window.location.href = '/auth/login'; },
+});
 
-export function ApiProvider({ children }: ApiProviderProps) {
-  const apiClient = new ApiClient({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
-    timeout: 30000,
-    onTokenExpired: () => {
-      // Handle token expiration - redirect to login or refresh token
-      window.location.href = '/auth/login';
-    },
-    onUnauthorized: () => {
-      // Handle unauthorized access
-      window.location.href = '/auth/login';
-    },
-  });
+// Initialize once at module load — ensures the API is injected into the
+// Zustand store before any component using useAuth() tries to call login/register.
+initializeStores(apiClient);
 
-  useEffect(() => {
-    // Initialize stores with API client
-    initializeStores(apiClient);
-  }, [apiClient]);
-
+export function ApiProvider({ children }: { children: ReactNode }) {
   return (
     <StoreProvider apiClient={apiClient}>
       {children}

@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import * as nodemailer from 'nodemailer';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -6,7 +6,7 @@ export class EmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: config.SMTP_PORT === 465,

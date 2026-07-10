@@ -1,0 +1,28 @@
+{
+  "projectId": "e8f206c3-3bcc-4b87-927f-57548e259f49",
+  "shape": "package",
+  "pkg": "@petra/web",
+  "globalName": "PetraUI",
+  "srcDir": "packages/web/src/components",
+  "cssEntry": "styles-compiled.css",
+  "tsconfig": "tsconfig.json",
+  "buildCmd": "pnpm --filter @petra/web run build",
+  "runtimeFontPrefixes": ["Inter", "JetBrains Mono"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "Button": "packages/web/src/components/ui/button.tsx",
+    "LoadingSpinner": "packages/web/src/components/ui/loading-spinner.tsx",
+    "Hero": null,
+    "Features": null,
+    "HowItWorks": null,
+    "Testimonials": null,
+    "Pricing": null,
+    "CTA": null,
+    "Navbar": null,
+    "Footer": null,
+    "AuthGuard": null,
+    "ThemeProvider": null,
+    "ApiProvider": null,
+    "Toaster": null
+  }
+}

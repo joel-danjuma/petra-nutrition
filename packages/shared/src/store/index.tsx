@@ -1,9 +1,9 @@
 export * from './auth';
 export * from './pantry';
 
-// Store provider for React apps
 import React, { createContext, useContext, ReactNode } from 'react';
 import { ApiClient, PetraApiEndpoints } from '../api';
+import { useAuthStore } from './auth';
 
 interface StoreProviderProps {
   apiClient: ApiClient;
@@ -14,7 +14,6 @@ const ApiContext = createContext<PetraApiEndpoints | null>(null);
 
 export const StoreProvider: React.FC<StoreProviderProps> = ({ apiClient, children }) => {
   const api = new PetraApiEndpoints(apiClient);
-  
   return (
     <ApiContext.Provider value={api}>
       {children}
@@ -24,18 +23,13 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ apiClient, childre
 
 export const useApi = () => {
   const api = useContext(ApiContext);
-  if (!api) {
-    throw new Error('useApi must be used within a StoreProvider');
-  }
+  if (!api) throw new Error('useApi must be used within a StoreProvider');
   return api;
 };
 
-// Initialize stores with API client
 export const initializeStores = (apiClient: ApiClient) => {
   const api = new PetraApiEndpoints(apiClient);
-  
-  // Inject API into stores
-  (window as any).__PETRA_API__ = api;
-  
+  // Inject API into Zustand store so auth actions (login/register/etc.) can use it
+  useAuthStore.setState({ api } as any);
   return api;
 };

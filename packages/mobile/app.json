@@ -53,12 +53,6 @@
         }
       ],
       [
-        "expo-barcode-scanner",
-        {
-          "cameraPermission": "Allow Petra AI to use your camera to scan product barcodes."
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "The app accesses your photos to let you identify food items from your gallery.",
