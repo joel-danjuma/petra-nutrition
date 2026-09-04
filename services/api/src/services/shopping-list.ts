@@ -1,16 +1,27 @@
 import { prisma } from '../database';
 import { logger } from '../utils/logger';
 
+/** Canonicalise a shopping-list item's enum fields before they reach Prisma. */
+function coerceItemEnums<T extends Record<string, any>>(item: T): T {
+  const out: Record<string, any> = { ...item };
+  for (const field of ['category', 'priority'] as const) {
+    if (typeof out[field] === 'string') out[field] = out[field].toUpperCase();
+  }
+  return out as T;
+}
+
 export class ShoppingListService {
   async getShoppingLists(userId: string, filters: any = {}) {
     const {
       query,
-      page = 1,
-      limit = 20,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = filters;
 
+    // Coerced here because this controller forwards `req.query` verbatim, so
+    // pagination arrives as strings and Prisma rejects `take: "1"`.
+    const page = Math.max(1, Number(filters.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit) || 20));
     const offset = (page - 1) * limit;
     const where: any = { userId };
 
@@ -71,7 +82,7 @@ export class ShoppingListService {
       return await prisma.shoppingList.create({
         data: {
           ...listData,
-          items: items?.length ? { create: items } : undefined,
+          items: items?.length ? { create: items.map(coerceItemEnums) } : undefined,
         },
         include: {
           items: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
@@ -201,8 +212,8 @@ export class ShoppingListService {
       await Promise.all(
         items.map(item =>
           item.id
-            ? prisma.shoppingListItem.update({ where: { id: item.id }, data: item })
-            : prisma.shoppingListItem.create({ data: { ...item, shoppingListId: id } })
+            ? prisma.shoppingListItem.update({ where: { id: item.id }, data: coerceItemEnums(item) })
+            : prisma.shoppingListItem.create({ data: { ...coerceItemEnums(item), shoppingListId: id } })
         )
       );
 

@@ -1,6 +1,9 @@
 import { prisma } from '../database';
 import { cache } from '../config/redis';
 import { logger } from '../utils/logger';
+import { AnalyticsService } from './analytics';
+
+const analyticsService = new AnalyticsService();
 
 export interface PantryFilters {
   query?: string;
@@ -12,6 +15,30 @@ export interface PantryFilters {
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+}
+
+/**
+ * Coerce the enum-valued fields to the canonical UPPERCASE form Prisma expects.
+ *
+ * The API accepts either casing — the mobile app sends lowercase, the barcode
+ * lookup in `services/barcode.ts` returns lowercase, and seeds use uppercase.
+ * Normalising here, at the one boundary that talks to Prisma, is the same shape
+ * `services/analytics.ts` already uses.
+ */
+function coercePantryEnums<T extends Record<string, any>>(data: T): T {
+  const out: Record<string, any> = { ...data };
+  for (const field of ['category', 'location'] as const) {
+    if (typeof out[field] === 'string') out[field] = out[field].toUpperCase();
+  }
+  return out as T;
+}
+
+/** Same coercion for a filter value that may be a single string or a list. */
+function coerceEnumFilter(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const list = Array.isArray(value) ? value : [value];
+  const out = list.filter(v => typeof v === 'string').map(v => (v as string).toUpperCase());
+  return out.length ? out : undefined;
 }
 
 export class PantryService {
@@ -37,12 +64,14 @@ export class PantryService {
       where.name = { contains: query, mode: 'insensitive' };
     }
 
-    if (category && category.length > 0) {
-      where.category = { in: category };
+    const categoryFilter = coerceEnumFilter(category);
+    if (categoryFilter) {
+      where.category = { in: categoryFilter };
     }
 
-    if (location && location.length > 0) {
-      where.location = { in: location };
+    const locationFilter = coerceEnumFilter(location);
+    if (locationFilter) {
+      where.location = { in: locationFilter };
     }
 
     if (isLowStock) {
@@ -186,11 +215,12 @@ export class PantryService {
 
   async create(itemData: any) {
     try {
+      const normalised = coercePantryEnums(itemData);
       const item = await prisma.pantryItem.create({
         data: {
-          ...itemData,
+          ...normalised,
           // Calculate if item is low stock based on quantity and threshold
-          isLowStock: itemData.quantity <= (itemData.lowStockThreshold || 1),
+          isLowStock: normalised.quantity <= (normalised.lowStockThreshold || 1),
         },
       });
 
@@ -204,8 +234,10 @@ export class PantryService {
     }
   }
 
-  async update(id: string, userId: string, updates: any) {
+  async update(id: string, userId: string, rawUpdates: any) {
     try {
+      // PATCH has no enum validator, so lowercase used to reach Prisma and throw.
+      const updates = coercePantryEnums(rawUpdates);
       const item = await prisma.pantryItem.findFirst({
         where: { id, userId },
       });
@@ -237,7 +269,7 @@ export class PantryService {
     }
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, userId: string, reason?: 'used' | 'wasted') {
     try {
       const item = await prisma.pantryItem.findFirst({
         where: { id, userId },
@@ -245,6 +277,16 @@ export class PantryService {
 
       if (!item) {
         return null;
+      }
+
+      if (reason) {
+        await analyticsService.logWaste(userId, {
+          itemName: item.name,
+          category: item.category,
+          action: reason,
+          quantity: item.quantity,
+          unit: item.unit,
+        });
       }
 
       await prisma.pantryItem.delete({

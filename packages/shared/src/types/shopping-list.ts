@@ -1,31 +1,18 @@
 import { z } from 'zod';
+import { ItemCategorySchema, PrioritySchema } from './enums';
 
 export const ShoppingListItemSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   quantity: z.number().min(0),
   unit: z.string(),
-  category: z.enum([
-    'produce',
-    'dairy',
-    'meat',
-    'seafood',
-    'grains',
-    'pantry_staples',
-    'spices',
-    'condiments',
-    'beverages',
-    'frozen',
-    'canned',
-    'snacks',
-    'other'
-  ]),
+  category: ItemCategorySchema,
   isCompleted: z.boolean().default(false),
   estimatedPrice: z.number().min(0).optional(),
   notes: z.string().optional(),
   recipeId: z.string().uuid().optional(), // if item is from a recipe
   recipeName: z.string().optional(),
-  priority: z.enum(['low', 'medium', 'high']).default('medium'),
+  priority: PrioritySchema.default('MEDIUM'),
   store: z.string().optional(), // preferred store for this item
 });
 

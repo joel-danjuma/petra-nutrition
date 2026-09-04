@@ -1,27 +1,14 @@
 import { z } from 'zod';
+import { ItemCategorySchema, StorageLocationSchema } from './enums';
 
 export const PantryItemSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
   name: z.string().min(1),
-  category: z.enum([
-    'produce',
-    'dairy',
-    'meat',
-    'seafood',
-    'grains',
-    'pantry_staples',
-    'spices',
-    'condiments',
-    'beverages',
-    'frozen',
-    'canned',
-    'snacks',
-    'other'
-  ]),
+  category: ItemCategorySchema,
   quantity: z.number().min(0),
   unit: z.string(), // e.g., "pieces", "lbs", "cups", "bottles"
-  location: z.enum(['pantry', 'fridge', 'freezer']).default('pantry'),
+  location: StorageLocationSchema.default('PANTRY'),
   purchaseDate: z.date().optional(),
   expirationDate: z.date().optional(),
   barcode: z.string().optional(),
@@ -64,7 +51,7 @@ export const BulkUpdatePantryItemSchema = z.object({
 export const PantrySearchSchema = z.object({
   query: z.string().optional(),
   category: z.array(z.string()).optional(),
-  location: z.array(z.enum(['pantry', 'fridge', 'freezer'])).optional(),
+  location: z.array(StorageLocationSchema).optional(),
   isExpiringSoon: z.boolean().optional(), // within 7 days
   isLowStock: z.boolean().optional(),
   sortBy: z.enum(['name', 'expirationDate', 'purchaseDate', 'category', 'quantity']).default('name'),

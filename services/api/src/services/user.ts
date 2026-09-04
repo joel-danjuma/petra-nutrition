@@ -93,4 +93,32 @@ export class UserService {
       where: { id },
     });
   }
+
+  async completeOnboarding(id: string, data: {
+    dietaryRestrictions?: string[];
+    allergies?: string[];
+    householdSize?: number;
+    cookingSkill?: string;
+  }) {
+    const profile: any = {
+      dietaryRestrictions: data.dietaryRestrictions ?? [],
+      allergies: data.allergies ?? [],
+      ...(data.householdSize !== undefined && { householdSize: data.householdSize }),
+      ...(data.cookingSkill !== undefined && { cookingSkill: data.cookingSkill.toUpperCase() }),
+      onboardingCompletedAt: new Date(),
+    };
+
+    return prisma.user.update({
+      where: { id },
+      data: {
+        profile: {
+          upsert: {
+            create: profile,
+            update: profile,
+          },
+        },
+      },
+      include: { profile: true },
+    });
+  }
 }

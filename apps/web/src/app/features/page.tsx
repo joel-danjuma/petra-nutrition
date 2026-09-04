@@ -42,25 +42,25 @@ const features = [
 
 export default function FeaturesPage() {
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <main className="min-h-screen bg-secondary">
       {/* Nav */}
-      <nav className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+      <nav className="bg-background border-b border-border">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <ChefHat className="h-6 w-6 text-green-600" />
-            <span className="text-lg font-bold text-gray-900 dark:text-white">Petra AI</span>
+            <ChefHat className="h-6 w-6 text-primary" />
+            <span className="text-lg font-medium text-foreground">Petra AI</span>
           </Link>
           <div className="flex gap-4">
-            <Link href="/auth/login" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Sign In</Link>
-            <Link href="/auth/register" className="text-sm px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Get Started</Link>
+            <Link href="/auth/login" className="text-sm text-muted-foreground active:text-foreground">Sign In</Link>
+            <Link href="/auth/register" className="text-sm px-4 py-1.5 bg-primary text-white rounded-lg active:bg-primary transition-colors">Get Started</Link>
           </div>
         </div>
       </nav>
 
       <div className="max-w-6xl mx-auto px-4 py-16">
         <div className="text-center mb-14">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">Everything you need in your kitchen</h1>
-          <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+          <h1 className="text-4xl font-medium text-foreground mb-4">Everything you need in your kitchen</h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Petra AI combines smart recipe discovery, pantry tracking, and AI-powered meal planning into one beautifully designed app.
           </p>
         </div>
@@ -69,17 +69,17 @@ export default function FeaturesPage() {
           {features.map(feature => {
             const Icon = feature.icon;
             return (
-              <div key={feature.title} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-                <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
-                  <Icon className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div key={feature.title} className="bg-background rounded-2xl border border-border p-6">
+                <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center mb-4">
+                  <Icon className="h-6 w-6 text-primary" />
                 </div>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${feature.free ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                  <h3 className="font-medium text-foreground">{feature.title}</h3>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${feature.free ? 'bg-secondary text-primary' : 'bg-warning text-foreground'}`}>
                     {feature.free ? 'Free' : 'Premium'}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{feature.description}</p>
+                <p className="text-sm text-muted-foreground">{feature.description}</p>
               </div>
             );
           })}
@@ -94,19 +94,19 @@ export default function FeaturesPage() {
             const Icon = item.icon;
             return (
               <div key={item.title} className="text-center p-6">
-                <Icon className="h-8 w-8 text-green-600 mx-auto mb-3" />
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{item.desc}</p>
+                <Icon className="h-8 w-8 text-primary mx-auto mb-3" />
+                <h3 className="font-medium text-foreground mb-2">{item.title}</h3>
+                <p className="text-sm text-muted-foreground">{item.desc}</p>
               </div>
             );
           })}
         </div>
 
         <div className="text-center">
-          <Link href="/auth/register" className="inline-block px-8 py-3.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors text-lg">
+          <Link href="/auth/register" className="inline-block px-8 py-3.5 bg-primary text-white rounded-xl font-medium active:bg-primary transition-colors text-lg">
             Get started for free
           </Link>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">No credit card required</p>
+          <p className="text-sm text-muted-foreground mt-3">No credit card required</p>
         </div>
       </div>
     </main>

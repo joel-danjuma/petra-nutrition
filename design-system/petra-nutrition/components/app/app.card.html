@@ -1,0 +1,102 @@
+<!-- @dsCard group="App UI" viewport="760x620" name="App components" subtitle="Tab bar · chips · list rows · progress · cook step · empty state" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<style>
+  body{margin:0;font-family:var(--font-sans);background:#fff;padding:24px;color:var(--petra-ink)}
+  .grid{display:flex;flex-direction:column;gap:18px}
+  .cell{display:flex;flex-direction:column;gap:9px}
+  .lbl{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--petra-muted)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .group{border:1px solid var(--border-hairline);border-radius:var(--radius-md);overflow:hidden;max-width:420px}
+  .phone{max-width:420px;border:1px solid var(--border-hairline);border-radius:var(--radius-md);overflow:hidden}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+</style>
+</head><body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.454.0"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const DS = window.PetraNutritionDesignSystem_20fba5;
+const { TabBar, Chip, ProgressRow, ListRow, CookStep, EmptyState, Button } = DS;
+const I = (n) => <i data-lucide={n}></i>;
+
+function Demo(){
+  const [tab, setTab] = React.useState('today');
+  const [cat, setCat] = React.useState('produce');
+  React.useEffect(() => { window.lucide && window.lucide.createIcons(); });
+
+  return (
+    <div className="grid">
+      <div className="cell"><span className="lbl">Tab bar</span>
+        <div className="phone">
+          <TabBar
+            activeId={tab}
+            onSelect={setTab}
+            items={[
+              { id: 'today',  label: 'Today',  icon: I('house') },
+              { id: 'petra',  label: 'Petra',  icon: I('message-square') },
+              { id: 'pantry', label: 'Pantry', icon: I('refrigerator') },
+              { id: 'plan',   label: 'Plan',   icon: I('calendar-days') },
+              { id: 'you',    label: 'You',    icon: I('user') },
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="cell"><span className="lbl">Chips — radius-sm, never the pricing pill</span>
+        <div className="row">
+          {['produce','dairy','meat','frozen'].map(c => (
+            <Chip key={c} label={c[0].toUpperCase()+c.slice(1)} selected={cat===c} onSelect={() => setCat(c)} />
+          ))}
+          <Chip label="35 min" />
+          <Chip label="Serves 4" />
+        </div>
+      </div>
+
+      <div className="two">
+        <div className="cell"><span className="lbl">Progress rows — ink fill, not green</span>
+          <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            <ProgressRow label="Protein" value={0.64} readout="89 / 140 g" />
+            <ProgressRow label="Fibre"   value={0.41} readout="12 / 30 g" />
+            <ProgressRow label="Veg"     value={0.60} readout="3 / 5" />
+          </div>
+        </div>
+
+        <div className="cell"><span className="lbl">List rows</span>
+          <div className="group">
+            <ListRow title="Chicken thighs, bone-in" value="8" />
+            <ListRow title="Broccoli, stalk and all" value="1 head" />
+            <ListRow title="Flat-leaf parsley" value="1 bunch" muted last />
+          </div>
+        </div>
+      </div>
+
+      <div className="cell"><span className="lbl">Cook step — full-bleed dark surface</span>
+        <div style={{maxWidth:420}}>
+          <CookStep
+            stepNumber={3}
+            totalSteps={6}
+            instruction="Skin-side down into a cold, dry pan. Bring it up to medium and render without touching it."
+            timeLabel="12:00"
+          />
+        </div>
+      </div>
+
+      <div className="cell"><span className="lbl">Empty state</span>
+        <div className="group">
+          <EmptyState
+            icon={I('package')}
+            title="Your pantry is empty"
+            body="Scan a barcode or a shelf of fresh food to get started."
+            action={<Button variant="secondary">Scan something</Button>}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body></html>

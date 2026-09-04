@@ -72,7 +72,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -80,8 +80,8 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   if (!recipe) {
     return (
       <div className="text-center py-24">
-        <p className="text-gray-500">Recipe not found.</p>
-        <Link href="/dashboard/recipes" className="mt-4 inline-block text-green-600 hover:underline">
+        <p className="text-muted-foreground">Recipe not found.</p>
+        <Link href="/dashboard/recipes" className="mt-4 inline-block text-primary active:underline">
           Back to Recipes
         </Link>
       </div>
@@ -92,31 +92,31 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     <div className="max-w-3xl mx-auto">
       <Link
         href="/dashboard/recipes"
-        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground active:text-foreground mb-6 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Recipes
       </Link>
 
       {/* Header */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-6">
-        <div className="h-64 bg-gradient-to-br from-green-100 to-blue-100 dark:from-green-900/30 dark:to-blue-900/30 flex items-center justify-center">
+      <div className="bg-background rounded-2xl border border-border overflow-hidden mb-6">
+        <div className="h-64 bg-secondary flex items-center justify-center">
           {recipe.imageUrl ? (
             <img src={recipe.imageUrl} alt={recipe.title} className="w-full h-full object-cover" />
           ) : (
-            <ChefHat className="h-20 w-20 text-gray-400" />
+            <ChefHat className="h-20 w-20 text-muted-foreground" />
           )}
         </div>
 
         <div className="p-6">
           <div className="flex items-start justify-between gap-4">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{recipe.title}</h1>
+            <h1 className="text-2xl font-medium text-foreground">{recipe.title}</h1>
             <button
               onClick={toggleFavorite}
               className={`p-2 rounded-xl transition-colors shrink-0 ${
                 recipe.isFavorited
-                  ? 'text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100'
-                  : 'text-gray-400 bg-gray-50 dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-400'
+                  ? 'text-destructive bg-secondary active:bg-secondary'
+                  : 'text-muted-foreground bg-secondary active:bg-secondary active:text-destructive'
               }`}
             >
               <Heart className={`h-5 w-5 ${recipe.isFavorited ? 'fill-current' : ''}`} />
@@ -124,10 +124,10 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           </div>
 
           {recipe.description && (
-            <p className="text-gray-600 dark:text-gray-400 mt-2">{recipe.description}</p>
+            <p className="text-muted-foreground mt-2">{recipe.description}</p>
           )}
 
-          <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" />
               Prep: {recipe.prepTime}m
@@ -141,20 +141,20 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
               {recipe.servings} servings
             </span>
             <span className="flex items-center gap-1.5">
-              <Star className="h-4 w-4 text-amber-400" />
+              <Star className="h-4 w-4 text-foreground" />
               {recipe.rating?.toFixed(1) || 'No ratings'} ({recipe.reviewCount})
             </span>
           </div>
 
           {/* User rating */}
           <div className="mt-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Your rating:</p>
+            <p className="text-xs text-muted-foreground mb-1">Your rating:</p>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map(n => (
                 <button
                   key={n}
                   onClick={() => rateRecipe(n)}
-                  className={`transition-colors ${n <= userRating ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600 hover:text-amber-300'}`}
+                  className={`transition-colors ${n <= userRating ? 'text-foreground' : 'text-muted-foreground active:text-foreground'}`}
                 >
                   <Star className="h-5 w-5 fill-current" />
                 </button>
@@ -166,15 +166,15 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Ingredients */}
-        <div className="md:col-span-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Ingredients</h2>
+        <div className="md:col-span-1 bg-background rounded-2xl border border-border p-6">
+          <h2 className="font-medium text-foreground mb-4">Ingredients</h2>
           <ul className="space-y-2">
             {recipe.ingredients?.map((ing: any) => (
-              <li key={ing.id} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 mt-2 shrink-0" />
+              <li key={ing.id} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
                 <span>
                   <span className="font-medium">{ing.amount} {ing.unit}</span> {ing.name}
-                  {ing.notes && <span className="text-gray-400 dark:text-gray-500"> ({ing.notes})</span>}
+                  {ing.notes && <span className="text-muted-foreground"> ({ing.notes})</span>}
                 </span>
               </li>
             ))}
@@ -182,15 +182,15 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         </div>
 
         {/* Instructions */}
-        <div className="md:col-span-2 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Instructions</h2>
+        <div className="md:col-span-2 bg-background rounded-2xl border border-border p-6">
+          <h2 className="font-medium text-foreground mb-4">Instructions</h2>
           <ol className="space-y-4">
             {recipe.instructions?.map((inst: any) => (
               <li key={inst.id} className="flex gap-4">
-                <span className="w-7 h-7 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 flex items-center justify-center text-sm font-semibold shrink-0">
+                <span className="w-7 h-7 rounded-full bg-secondary text-primary flex items-center justify-center text-sm font-medium shrink-0">
                   {inst.step}
                 </span>
-                <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">{inst.instruction}</p>
+                <p className="text-sm text-muted-foreground mt-1">{inst.instruction}</p>
               </li>
             ))}
           </ol>
@@ -199,8 +199,8 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
 
       {/* Nutrition */}
       {recipe.nutrition && (
-        <div className="mt-6 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Nutrition (per serving)</h2>
+        <div className="mt-6 bg-background rounded-2xl border border-border p-6">
+          <h2 className="font-medium text-foreground mb-4">Nutrition (per serving)</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: 'Calories', value: recipe.nutrition.calories, unit: 'kcal' },
@@ -208,11 +208,11 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
               { label: 'Carbs', value: recipe.nutrition.carbs, unit: 'g' },
               { label: 'Fat', value: recipe.nutrition.fat, unit: 'g' },
             ].map(n => (
-              <div key={n.label} className="text-center p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-lg font-bold text-gray-900 dark:text-white">
+              <div key={n.label} className="text-center p-3 rounded-xl bg-secondary">
+                <p className="text-lg font-medium text-foreground">
                   {Math.round(n.value / (recipe.servings || 1))}{n.unit}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{n.label}</p>
               </div>
             ))}
           </div>

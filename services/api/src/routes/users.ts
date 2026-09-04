@@ -51,4 +51,15 @@ router.get('/stats',
   asyncHandler(userController.getStats.bind(userController))
 );
 
+// Complete onboarding
+router.post('/onboarding',
+  validate([
+    validators.stringArray('dietaryRestrictions'),
+    validators.stringArray('allergies'),
+    validators.householdSize,
+    validators.cookingSkill,
+  ]),
+  asyncHandler(userController.completeOnboarding.bind(userController))
+);
+
 export default router;

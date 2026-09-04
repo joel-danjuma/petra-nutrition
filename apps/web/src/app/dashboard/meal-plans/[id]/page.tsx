@@ -57,8 +57,8 @@ export default function MealPlanDetailPage({ params }: { params: { id: string } 
     }
   };
 
-  if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>;
-  if (!plan) return <div className="text-center py-24 text-gray-500">Meal plan not found.</div>;
+  if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (!plan) return <div className="text-center py-24 text-muted-foreground">Meal plan not found.</div>;
 
   // Group meals by date
   const mealsByDate: Record<string, any[]> = {};
@@ -71,12 +71,12 @@ export default function MealPlanDetailPage({ params }: { params: { id: string } 
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/dashboard/meal-plans" className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <Link href="/dashboard/meal-plans" className="p-2 text-muted-foreground active:text-foreground rounded-lg active:bg-secondary transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">{plan.name}</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <h1 className="text-2xl font-medium text-foreground truncate">{plan.name}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {new Date(plan.startDate).toLocaleDateString()} – {new Date(plan.endDate).toLocaleDateString()}
           </p>
         </div>
@@ -88,8 +88,8 @@ export default function MealPlanDetailPage({ params }: { params: { id: string } 
 
       {/* Nutrition summary */}
       {nutrition?.averages && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">Daily Nutrition Averages</h2>
+        <div className="bg-background rounded-2xl border border-border p-5 mb-6">
+          <h2 className="font-medium text-foreground mb-3 text-sm">Daily Nutrition Averages</h2>
           <div className="grid grid-cols-4 gap-3">
             {[
               { label: 'Calories', value: nutrition.averages.calories, unit: 'kcal' },
@@ -97,9 +97,9 @@ export default function MealPlanDetailPage({ params }: { params: { id: string } 
               { label: 'Carbs', value: nutrition.averages.carbs, unit: 'g' },
               { label: 'Fat', value: nutrition.averages.fat, unit: 'g' },
             ].map(n => (
-              <div key={n.label} className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                <p className="text-base font-bold text-gray-900 dark:text-white">{n.value}{n.unit}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.label}</p>
+              <div key={n.label} className="text-center p-3 bg-secondary rounded-xl">
+                <p className="text-base font-medium text-foreground">{n.value}{n.unit}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{n.label}</p>
               </div>
             ))}
           </div>
@@ -109,26 +109,26 @@ export default function MealPlanDetailPage({ params }: { params: { id: string } 
       {/* Meals by day */}
       <div className="space-y-4">
         {Object.entries(mealsByDate).map(([date, meals]) => (
-          <div key={date} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-green-600" />
+          <div key={date} className="bg-background rounded-2xl border border-border p-5">
+            <h3 className="font-medium text-foreground mb-3 flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
               {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h3>
             <div className="space-y-2">
               {MEAL_TYPES.map(type => {
                 const meal = meals.find((m: any) => m.mealType === type);
                 return (
-                  <div key={type} className="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-0">
-                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 w-20 shrink-0">
+                  <div key={type} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                    <span className="text-xs font-medium text-muted-foreground w-20 shrink-0">
                       {type.charAt(0) + type.slice(1).toLowerCase()}
                     </span>
                     {meal ? (
-                      <span className="text-sm text-gray-900 dark:text-white">
+                      <span className="text-sm text-foreground">
                         {meal.recipe?.title || meal.customName || '—'}
-                        {meal.servings > 1 && <span className="text-gray-400 dark:text-gray-500 ml-1">×{meal.servings}</span>}
+                        {meal.servings > 1 && <span className="text-muted-foreground ml-1">×{meal.servings}</span>}
                       </span>
                     ) : (
-                      <span className="text-sm text-gray-400 dark:text-gray-600 italic">Not planned</span>
+                      <span className="text-sm text-muted-foreground italic">Not planned</span>
                     )}
                   </div>
                 );
@@ -137,7 +137,7 @@ export default function MealPlanDetailPage({ params }: { params: { id: string } 
           </div>
         ))}
         {Object.keys(mealsByDate).length === 0 && (
-          <div className="text-center py-12 text-gray-500">No meals added to this plan yet.</div>
+          <div className="text-center py-12 text-muted-foreground">No meals added to this plan yet.</div>
         )}
       </div>
     </div>

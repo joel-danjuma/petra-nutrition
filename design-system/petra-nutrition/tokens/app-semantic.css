@@ -1,0 +1,29 @@
+/* Petra Nutrition — app semantic tokens.
+
+   The marketing system defines success, info and link, but the product UI also
+   has to say "this is about to go off" and "this will delete something". Rather
+   than introduce new hues, both roles are built from surfaces the system
+   already owns: cream carries warnings, coral carries destructive actions.
+
+   Signature colours remain full surfaces, never small accents — the one
+   exception is type colour, which the system already sanctions (the pricing
+   table's check glyph is drawn in --petra-success). */
+:root {
+  /* "Needs using soon" — cream surface, ink type. Matches CreamCallout. */
+  --app-warning-surface: var(--petra-cream);
+  --app-warning-ink: var(--petra-ink);
+
+  /* Destructive / error. Coral as a type colour reads at 7.3:1 on white. */
+  --app-danger: var(--petra-coral);
+  --app-on-danger: var(--petra-white);
+
+  /* Positive outcome — zero waste, a completed cook. */
+  --app-success-surface: var(--petra-forest);
+  --app-on-success: var(--petra-white);
+
+  /* The two translucencies sanctioned over a full-bleed dark surface.
+     Anything else invents an undocumented value. */
+  --app-on-dark-muted: rgba(255, 255, 255, 0.62);
+  --app-on-dark-surface: rgba(255, 255, 255, 0.06);
+  --app-on-dark-hairline: rgba(255, 255, 255, 0.14);
+}

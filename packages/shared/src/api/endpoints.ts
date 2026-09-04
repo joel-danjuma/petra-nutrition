@@ -1,6 +1,7 @@
 import { ApiClient } from './client';
 import {
   User, AuthResponse, CreateUser, UpdateUser, Login, PasswordReset, PasswordResetConfirm,
+  CompleteOnboarding,
   Recipe, CreateRecipe, UpdateRecipe, RecipeSearch, RecipeSearchResponse, RecipeGenerationRequest,
   PantryItem, CreatePantryItem, UpdatePantryItem, PantrySearch, PantrySearchResponse, PantryStats,
   BarcodeRecognition, ImageRecognition, RecognitionResult,
@@ -9,11 +10,12 @@ import {
   ShoppingList, CreateShoppingList, UpdateShoppingList, ShoppingListSearch, ShoppingListSearchResponse,
   GenerateShoppingList, BulkUpdateShoppingListItems,
   ChatSession, CreateChatSession, SendMessage, ChatSessionSearch, ChatSessionSearchResponse,
+  LogWasteEvent, LogMealCompletion, WasteSummary, TodayNutrition,
   ApiResponse, PaginatedResponse
 } from '../types';
 
 export class PetraApiEndpoints {
-  constructor(private client: ApiClient) {}
+  constructor(public readonly client: ApiClient) {}
 
   // Auth endpoints
   auth = {
@@ -55,6 +57,9 @@ export class PetraApiEndpoints {
 
     uploadAvatar: (file: File): Promise<ApiResponse<{ avatarUrl: string }>> =>
       this.client.uploadFile('/users/avatar', file, 'avatar'),
+
+    completeOnboarding: (data: CompleteOnboarding): Promise<ApiResponse<User>> =>
+      this.client.post('/users/onboarding', data),
   };
 
   // Recipe endpoints
@@ -104,8 +109,8 @@ export class PetraApiEndpoints {
     update: (id: string, data: UpdatePantryItem): Promise<ApiResponse<PantryItem>> =>
       this.client.patch(`/pantry/${id}`, data),
 
-    delete: (id: string): Promise<ApiResponse<void>> =>
-      this.client.delete(`/pantry/${id}`),
+    delete: (id: string, reason?: 'used' | 'wasted'): Promise<ApiResponse<void>> =>
+      this.client.delete(`/pantry/${id}`, reason ? { params: { reason } } : undefined),
 
     getStats: (): Promise<ApiResponse<PantryStats>> =>
       this.client.get('/pantry/stats'),
@@ -254,5 +259,17 @@ export class PetraApiEndpoints {
 
     getFeatureUsage: (): Promise<ApiResponse<Record<string, number>>> =>
       this.client.get('/analytics/feature-usage'),
+
+    logWasteEvent: (data: LogWasteEvent): Promise<ApiResponse<void>> =>
+      this.client.post('/analytics/waste-log', data),
+
+    getWasteSummary: (): Promise<ApiResponse<WasteSummary>> =>
+      this.client.get('/analytics/waste-summary'),
+
+    logMealCompletion: (data: LogMealCompletion): Promise<ApiResponse<void>> =>
+      this.client.post('/analytics/meal-completion', data),
+
+    getTodayNutrition: (): Promise<ApiResponse<TodayNutrition>> =>
+      this.client.get('/analytics/today-nutrition'),
   };
 }

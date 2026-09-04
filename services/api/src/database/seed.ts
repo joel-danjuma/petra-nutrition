@@ -1,6 +1,8 @@
 import { PrismaClient, Difficulty, ItemCategory, StorageLocation, MealType, Priority } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
+import { seedDemoAccount } from './seed-demo';
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -60,10 +62,10 @@ async function main() {
 
   // Recipes
   const pastaRecipe = await prisma.recipe.upsert({
-    where: { id: 'seed-recipe-001' },
+    where: { id: '11111111-1111-4111-8111-111111111001' },
     update: {},
     create: {
-      id: 'seed-recipe-001',
+      id: '11111111-1111-4111-8111-111111111001',
       title: 'Classic Spaghetti Carbonara',
       description: 'A rich and creamy Italian pasta dish made with eggs, cheese, pancetta, and black pepper.',
       servings: 4,
@@ -111,10 +113,10 @@ async function main() {
   });
 
   const saladRecipe = await prisma.recipe.upsert({
-    where: { id: 'seed-recipe-002' },
+    where: { id: '11111111-1111-4111-8111-111111111002' },
     update: {},
     create: {
-      id: 'seed-recipe-002',
+      id: '11111111-1111-4111-8111-111111111002',
       title: 'Grilled Chicken Caesar Salad',
       description: 'A classic Caesar salad topped with juicy grilled chicken breast.',
       servings: 2,
@@ -161,10 +163,10 @@ async function main() {
   });
 
   const smoothieRecipe = await prisma.recipe.upsert({
-    where: { id: 'seed-recipe-003' },
+    where: { id: '11111111-1111-4111-8111-111111111003' },
     update: {},
     create: {
-      id: 'seed-recipe-003',
+      id: '11111111-1111-4111-8111-111111111003',
       title: 'Berry Protein Smoothie',
       description: 'A quick and nutritious breakfast smoothie packed with antioxidants and protein.',
       servings: 1,
@@ -206,6 +208,14 @@ async function main() {
   });
 
   console.log(`Created recipes: ${pastaRecipe.title}, ${saladRecipe.title}, ${smoothieRecipe.title}`);
+
+  // Clear Alice's owned rows before rebuilding: these three sections use
+  // create/createMany and duplicated on every re-run.
+  await prisma.$transaction([
+    prisma.pantryItem.deleteMany({ where: { userId: alice.id } }),
+    prisma.shoppingList.deleteMany({ where: { userId: alice.id } }),
+    prisma.mealPlan.deleteMany({ where: { userId: alice.id } }),
+  ]);
 
   // Pantry items for Alice
   await prisma.pantryItem.createMany({
@@ -293,8 +303,14 @@ async function main() {
     create: { userId: alice.id, recipeId: pastaRecipe.id, rating: 5, review: 'Absolutely delicious! My family loved it.' },
   });
 
-  console.log('Seed complete.');
+  // The rich premium demo account. Depends on the imported recipe library, so
+  // it degrades with a warning rather than failing if that hasn't been run.
+  console.log('\nSeeding demo account...');
+  await seedDemoAccount(prisma);
+
+  console.log('\nSeed complete.');
   console.log('\nTest credentials:');
+  console.log('  demo@petra.app    / password123  (Premium, full demo data)');
   console.log('  alice@example.com / password123  (Premium)');
   console.log('  bob@example.com   / password123  (Free)');
 }

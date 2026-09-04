@@ -1,38 +1,60 @@
-import { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
+import { View, FlatList, Pressable, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Package, ScanLine } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { usePantry } from '@petra/shared';
-import { Colors } from '../../src/constants/Colors';
-import { useColorScheme } from '../../src/hooks/useColorScheme';
-import { PantryItemCard } from '../../src/components/PantryItemCard';
+import { enumEquals, usePantry } from '@petra/shared';
+
+import { color, radius, semantic, shadow, space, type } from '../../src/theme';
+import { Text } from '../../src/components/ui/Text';
+import { Chip } from '../../src/components/ui/Chip';
+import { Card } from '../../src/components/ui/Card';
 import { SearchBar } from '../../src/components/SearchBar';
-import { FloatingActionButton } from '../../src/components/FloatingActionButton';
+
+// Ids are the canonical enum values so they compare directly against what the
+// API returns; the labels stay human. Previously these were lowercase, so
+// selecting any category filtered the list down to nothing.
+const CATEGORIES = [
+  { id: 'all', label: 'Everything' },
+  { id: 'PRODUCE', label: 'Produce' },
+  { id: 'DAIRY', label: 'Dairy' },
+  { id: 'MEAT', label: 'Meat' },
+  { id: 'PANTRY_STAPLES', label: 'Staples' },
+  { id: 'FROZEN', label: 'Frozen' },
+];
+
+/**
+ * Shelf-life state.
+ *
+ * The old version ran a six-colour rainbow of ad-hoc hexes. Urgency is now
+ * carried by type colour against a neutral track: coral for the genuinely
+ * urgent, ink for the imminent, muted for everything comfortable. Signature
+ * colours stay reserved for full surfaces, so nothing here is tinted.
+ */
+function shelfLife(item: { isLowStock?: boolean; expirationDate?: string | Date }): {
+  badge: string;
+  tone: string;
+  pct: number;
+} {
+  if (item.isLowStock) return { badge: 'Running low', tone: semantic.danger, pct: 14 };
+  if (!item.expirationDate) return { badge: 'Stocked', tone: color.muted, pct: 100 };
+
+  const days = Math.ceil((new Date(item.expirationDate).getTime() - Date.now()) / 86400000);
+  if (days <= 0) return { badge: 'Use today', tone: semantic.danger, pct: 6 };
+  if (days <= 3) {
+    return { badge: `${days} day${days > 1 ? 's' : ''} left`, tone: color.ink, pct: Math.round((days / 14) * 100) };
+  }
+  if (days <= 10) {
+    return { badge: `${days} days left`, tone: color.body, pct: Math.round((days / 14) * 100) };
+  }
+  return { badge: 'Weeks left', tone: color.muted, pct: 100 };
+}
 
 export default function PantryScreen() {
-  const colorScheme = useColorScheme();
   const { items, isLoading, fetchItems, deleteItem } = usePantry();
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  const categories = [
-    { id: 'all', name: 'All', icon: 'grid-outline' },
-    { id: 'produce', name: 'Produce', icon: 'leaf-outline' },
-    { id: 'dairy', name: 'Dairy', icon: 'nutrition-outline' },
-    { id: 'meat', name: 'Meat', icon: 'restaurant-outline' },
-    { id: 'pantry_staples', name: 'Pantry', icon: 'archive-outline' },
-    { id: 'frozen', name: 'Frozen', icon: 'snow-outline' },
-  ];
+  const [category, setCategory] = useState('all');
 
   useEffect(() => {
     fetchItems();
@@ -44,328 +66,216 @@ export default function PantryScreen() {
     setRefreshing(false);
   };
 
-  const handleDeleteItem = async (itemId: string) => {
-    Alert.alert(
-      'Delete Item',
-      'Are you sure you want to delete this item?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteItem(itemId),
-        },
-      ]
-    );
+  const handleDeleteItem = (itemId: string, name: string) => {
+    Alert.alert(name, 'How would you like to log this item?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Used it up', onPress: () => deleteItem(itemId, 'used') },
+      { text: 'Threw it out', style: 'destructive', onPress: () => deleteItem(itemId, 'wasted') },
+    ]);
   };
 
-  const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || selectedCategory === 'all' || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredItems = useMemo(
+    () =>
+      items.filter(item => {
+        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory = category === 'all' || enumEquals(item.category, category);
+        return matchesSearch && matchesCategory;
+      }),
+    [items, searchQuery, category]
+  );
 
-  const expiringSoonCount = items.filter(item => {
-    if (!item.expirationDate) return false;
-    const daysUntilExpiry = Math.ceil(
-      (new Date(item.expirationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return daysUntilExpiry <= 3 && daysUntilExpiry >= 0;
+  const expiringSoon = items.filter(i => {
+    if (!i.expirationDate) return false;
+    const days = Math.ceil((new Date(i.expirationDate).getTime() - Date.now()) / 86400000);
+    return days <= 3 && days >= 0;
   }).length;
+  const lowStock = items.filter(i => i.isLowStock).length;
 
-  const lowStockCount = items.filter(item => item.isLowStock).length;
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text preset="displayMd">Pantry</Text>
+          <Text preset="caption">
+            {items.length} items · {expiringSoon} need using · {lowStock} running low
+          </Text>
+        </View>
+        <Pressable
+          style={styles.listBtn}
+          onPress={() => router.push('/shopping')}
+          accessibilityRole="button"
+        >
+          <Text preset="caption" color={color.ink}>
+            List
+          </Text>
+        </Pressable>
+      </View>
 
-  const renderCategoryFilter = () => (
-    <View style={styles.categoryContainer}>
+      <View style={styles.searchWrap}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search the pantry"
+        />
+      </View>
+
       <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
-        data={categories}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.categoryButton,
-              {
-                backgroundColor: selectedCategory === item.id || (selectedCategory === null && item.id === 'all')
-                  ? Colors[colorScheme ?? 'light'].tint
-                  : Colors[colorScheme ?? 'light'].card,
-                borderColor: Colors[colorScheme ?? 'light'].border,
-              },
-            ]}
-            onPress={() => setSelectedCategory(item.id === 'all' ? null : item.id)}
-          >
-            <Ionicons
-              name={item.icon as any}
-              size={20}
-              color={
-                selectedCategory === item.id || (selectedCategory === null && item.id === 'all')
-                  ? 'white'
-                  : Colors[colorScheme ?? 'light'].text
-              }
-            />
-            <Text
-              style={[
-                styles.categoryText,
-                {
-                  color: selectedCategory === item.id || (selectedCategory === null && item.id === 'all')
-                    ? 'white'
-                    : Colors[colorScheme ?? 'light'].text,
-                },
-              ]}
-            >
-              {item.name}
-            </Text>
-          </TouchableOpacity>
+        data={CATEGORIES}
+        keyExtractor={c => c.id}
+        style={styles.catRow}
+        contentContainerStyle={styles.catRowContent}
+        renderItem={({ item: c }) => (
+          <Chip
+            label={c.label}
+            selected={category === c.id}
+            onPress={() => setCategory(c.id)}
+            style={styles.catChip}
+          />
         )}
       />
-    </View>
-  );
 
-  const renderAlerts = () => {
-    if (expiringSoonCount === 0 && lowStockCount === 0) return null;
-
-    return (
-      <View style={[styles.alertsContainer, { backgroundColor: Colors[colorScheme ?? 'light'].card }]}>
-        {expiringSoonCount > 0 && (
-          <TouchableOpacity
-            style={[styles.alertButton, { backgroundColor: Colors[colorScheme ?? 'light'].warning + '20' }]}
-            onPress={() => {
-              // Filter to show expiring items
-              setSelectedCategory(null);
-              setSearchQuery('');
-            }}
-          >
-            <Ionicons name="warning-outline" size={20} color={Colors[colorScheme ?? 'light'].warning} />
-            <Text style={[styles.alertText, { color: Colors[colorScheme ?? 'light'].warning }]}>
-              {expiringSoonCount} item{expiringSoonCount > 1 ? 's' : ''} expiring soon
-            </Text>
-          </TouchableOpacity>
-        )}
-        
-        {lowStockCount > 0 && (
-          <TouchableOpacity
-            style={[styles.alertButton, { backgroundColor: Colors[colorScheme ?? 'light'].destructive + '20' }]}
-            onPress={() => {
-              // Filter to show low stock items
-              setSelectedCategory(null);
-              setSearchQuery('');
-            }}
-          >
-            <Ionicons name="alert-circle-outline" size={20} color={Colors[colorScheme ?? 'light'].destructive} />
-            <Text style={[styles.alertText, { color: Colors[colorScheme ?? 'light'].destructive }]}>
-              {lowStockCount} item{lowStockCount > 1 ? 's' : ''} low in stock
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons
-        name="archive-outline"
-        size={64}
-        color={Colors[colorScheme ?? 'light'].tabIconDefault}
-      />
-      <Text style={[styles.emptyTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-        Your pantry is empty
-      </Text>
-      <Text style={[styles.emptySubtitle, { color: Colors[colorScheme ?? 'light'].tabIconDefault }]}>
-        Start by scanning a barcode or adding items manually
-      </Text>
-      <TouchableOpacity
-        style={[styles.emptyButton, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
-        onPress={() => router.push('/pantry/add')}
-      >
-        <Text style={styles.emptyButtonText}>Add Your First Item</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: Colors[colorScheme ?? 'light'].text }]}>
-          My Pantry
-        </Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.headerButton, { backgroundColor: Colors[colorScheme ?? 'light'].card }]}
-            onPress={() => router.push('/pantry/stats')}
-          >
-            <Ionicons name="stats-chart-outline" size={20} color={Colors[colorScheme ?? 'light'].text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.headerButton, { backgroundColor: Colors[colorScheme ?? 'light'].card }]}
-            onPress={() => router.push('/pantry/settings')}
-          >
-            <Ionicons name="settings-outline" size={20} color={Colors[colorScheme ?? 'light'].text} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Search */}
-      <SearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search pantry items..."
-      />
-
-      {/* Alerts */}
-      {renderAlerts()}
-
-      {/* Category Filters */}
-      {renderCategoryFilter()}
-
-      {/* Items List */}
       <FlatList
         data={filteredItems}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <PantryItemCard
-            item={item}
-            onPress={() => router.push(`/pantry/${item.id}`)}
-            onDelete={() => handleDeleteItem(item.id)}
-            onEdit={() => router.push(`/pantry/${item.id}/edit`)}
-          />
-        )}
+        renderItem={({ item }) => {
+          const { badge, tone, pct } = shelfLife(item);
+          return (
+            <Card
+              style={styles.card}
+              onLongPress={() => handleDeleteItem(item.id, item.name)}
+            >
+              <View style={styles.cardTop}>
+                <Text preset="labelMd" color={color.ink} style={styles.itemName}>
+                  {item.name}
+                </Text>
+                <Text preset="caption">
+                  {item.quantity} {item.unit}
+                </Text>
+              </View>
+              <View style={styles.cardBottom}>
+                <View style={styles.track}>
+                  <View style={[styles.fill, { width: `${pct}%`, backgroundColor: tone }]} />
+                </View>
+                <Text preset="caption" color={tone}>
+                  {badge}
+                </Text>
+              </View>
+            </Card>
+          );
+        }}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors[colorScheme ?? 'light'].tint}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.ink} />
         }
-        ListEmptyComponent={!isLoading ? renderEmptyState : null}
+        ListEmptyComponent={
+          !isLoading ? (
+            <View style={styles.emptyContainer}>
+              <Package size={40} color={color.muted} strokeWidth={1.5} />
+              <Text preset="titleMd" align="center">
+                Your pantry is empty
+              </Text>
+              <Text preset="bodyMd" align="center">
+                Scan a barcode or a shelf of fresh food to get started.
+              </Text>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          filteredItems.length > 0 ? (
+            <View style={styles.hintCard}>
+              <Text preset="caption" align="center">
+                Petra logs expiry dates from receipts and labels automatically.
+              </Text>
+            </View>
+          ) : null
+        }
       />
 
-      {/* Floating Action Button */}
-      <FloatingActionButton
-        onPress={() => {
-          Alert.alert(
-            'Add Item',
-            'How would you like to add this item?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Scan Barcode',
-                onPress: () => router.push('/pantry/scan/barcode'),
-              },
-              {
-                text: 'Take Photo',
-                onPress: () => router.push('/pantry/scan/camera'),
-              },
-              {
-                text: 'Add Manually',
-                onPress: () => router.push('/pantry/add'),
-              },
-            ]
-          );
-        }}
-        icon="add"
-      />
+      <Pressable
+        style={({ pressed }) => [
+          styles.scanFab,
+          { backgroundColor: pressed ? color.primaryActive : color.ink },
+          shadow.buttonRest,
+        ]}
+        onPress={() => router.push('/pantry/scan/camera')}
+        accessibilityRole="button"
+      >
+        <ScanLine size={18} color={color.white} strokeWidth={1.85} />
+        <Text preset="labelMd" color={color.white}>
+          Scan
+        </Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: color.hairline,
+    paddingHorizontal: space.lg,
+    paddingTop: space.xs,
+    paddingBottom: space.sm,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  categoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  headerText: { gap: space.xxs },
+  listBtn: {
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginRight: 8,
-    gap: 6,
+    borderColor: color.hairline,
   },
-  categoryText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  alertsContainer: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  alertButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  alertText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  searchWrap: { paddingHorizontal: space.lg, paddingTop: space.sm },
+  catRow: { marginTop: space.sm, flexGrow: 0 },
+  catRowContent: { paddingHorizontal: space.lg },
+  catChip: { marginRight: space.xs },
   listContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 100, // Space for FAB
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: 110,
+  },
+  card: { marginBottom: space.xs, gap: space.xs },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  itemName: { flex: 1 },
+  cardBottom: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  track: {
+    flex: 1,
+    height: 5,
+    borderRadius: radius.xs,
+    backgroundColor: color.surfaceStrong,
+    overflow: 'hidden',
+  },
+  fill: { height: '100%' },
+  hintCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: color.hairline,
+    borderRadius: radius.md,
+    padding: space.md,
+    alignItems: 'center',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
-    paddingTop: 60,
+    paddingTop: space.section / 2,
+    paddingHorizontal: space.xxl,
+    gap: space.sm,
   },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-  emptyButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  emptyButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+  scanFab: {
+    position: 'absolute',
+    right: space.lg,
+    bottom: space.lg,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderRadius: radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
   },
 });

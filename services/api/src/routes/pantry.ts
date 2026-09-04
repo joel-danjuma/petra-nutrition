@@ -74,7 +74,7 @@ router.patch('/:id',
 
 // Delete pantry item
 router.delete('/:id',
-  validate([validators.uuid('id')]),
+  validate([validators.uuid('id'), validators.deleteReason]),
   asyncHandler(pantryController.delete.bind(pantryController))
 );
 

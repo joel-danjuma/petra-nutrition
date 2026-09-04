@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { RecipeSchema, NutritionSchema } from './recipe';
+import { MealTypeSchema } from './enums';
+import { RecipeSchema, NutritionSchema, Nutrition } from './recipe';
 
-export const MealTypeSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack']);
 
 export const MealSchema = z.object({
   id: z.string().uuid(),
@@ -84,7 +84,6 @@ export const MealPlanSearchSchema = z.object({
   offset: z.number().min(0).default(0),
 });
 
-export type MealType = z.infer<typeof MealTypeSchema>;
 export type Meal = z.infer<typeof MealSchema>;
 export type MealPlanDay = z.infer<typeof MealPlanDaySchema>;
 export type MealPlan = z.infer<typeof MealPlanSchema>;
@@ -108,6 +107,6 @@ export interface MealPlanNutritionSummary {
   averageDailyFat: number;
   nutritionByDay: Array<{
     date: string;
-    nutrition: NutritionSchema;
+    nutrition: Nutrition;
   }>;
 }

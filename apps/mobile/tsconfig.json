@@ -12,9 +12,10 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": false,
-    "composite": true,
-    "baseUrl": ".",
+    "noEmit": true,
+    // Not composite: nothing consumes this package's build output, and marking
+    // it so forces every file reached through the @petra/shared path alias to
+    // be listed in `include`, which fails for sources in a sibling package.
     "paths": {
       "@/*": ["./src/*"],
       "@petra/shared/*": ["../shared/src/*"],

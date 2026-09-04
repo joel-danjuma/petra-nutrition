@@ -1,14 +1,25 @@
 import React from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../constants/Colors';
-import { useColorScheme } from '../hooks/useColorScheme';
+  Apple,
+  Beef,
+  Boxes,
+  CircleDashed,
+  Coffee,
+  Croissant,
+  Fish,
+  Flower2,
+  type LucideIcon,
+  Milk,
+  Package,
+  Snowflake,
+  Soup,
+  TriangleAlert,
+} from 'lucide-react-native';
+
+import { color, semantic, space } from '../theme';
+import { Card } from './ui/Card';
+import { Text } from './ui/Text';
 
 interface PantryItem {
   id: string;
@@ -29,262 +40,114 @@ interface PantryItemCardProps {
   onEdit: () => void;
 }
 
+const CATEGORY_ICON: Record<string, LucideIcon> = {
+  produce: Apple,
+  dairy: Milk,
+  meat: Beef,
+  seafood: Fish,
+  grains: Croissant,
+  pantry_staples: Package,
+  spices: Flower2,
+  condiments: Soup,
+  beverages: Coffee,
+  frozen: Snowflake,
+  canned: Boxes,
+  snacks: Croissant,
+  other: CircleDashed,
+};
+
+/**
+ * Expiry urgency is carried by type colour, not by a tinted status chip.
+ *
+ * The design system reserves its signature hues for full-bleed surfaces and
+ * gets emphasis from size and colour contrast, so a scale of pastel badge
+ * backgrounds would be off-system — and the old `colour + '20'` alpha tints
+ * had no token behind them at all. Coral marks the genuinely urgent case;
+ * everything else steps down through ink to muted.
+ */
+function expiryStatus(expirationDate?: string): { text: string; color: string } | null {
+  if (!expirationDate) return null;
+
+  const days = Math.ceil(
+    (new Date(expirationDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (days < 0) return { text: 'Expired', color: semantic.danger };
+  if (days === 0) return { text: 'Use today', color: semantic.danger };
+  if (days <= 3) return { text: `${days} day${days > 1 ? 's' : ''} left`, color: color.ink };
+  if (days <= 7) return { text: `${days} days left`, color: color.body };
+  return null;
+}
+
 export function PantryItemCard({ item, onPress, onDelete, onEdit }: PantryItemCardProps) {
-  const colorScheme = useColorScheme();
-
-  const getCategoryIcon = (category: string) => {
-    const icons: Record<string, string> = {
-      produce: 'leaf-outline',
-      dairy: 'nutrition-outline',
-      meat: 'restaurant-outline',
-      seafood: 'fish-outline',
-      grains: 'basket-outline',
-      pantry_staples: 'archive-outline',
-      spices: 'flower-outline',
-      condiments: 'wine-outline',
-      beverages: 'cafe-outline',
-      frozen: 'snow-outline',
-      canned: 'library-outline',
-      snacks: 'fast-food-outline',
-      other: 'ellipse-outline',
-    };
-    return icons[category] || 'ellipse-outline';
-  };
-
-  const getExpirationStatus = () => {
-    if (!item.expirationDate) return null;
-    
-    const today = new Date();
-    const expDate = new Date(item.expirationDate);
-    const diffTime = expDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) {
-      return { status: 'expired', color: Colors[colorScheme ?? 'light'].destructive, text: 'Expired' };
-    } else if (diffDays === 0) {
-      return { status: 'today', color: Colors[colorScheme ?? 'light'].warning, text: 'Expires today' };
-    } else if (diffDays <= 3) {
-      return { status: 'soon', color: Colors[colorScheme ?? 'light'].warning, text: `${diffDays} day${diffDays > 1 ? 's' : ''} left` };
-    } else if (diffDays <= 7) {
-      return { status: 'week', color: Colors[colorScheme ?? 'light'].success, text: `${diffDays} days left` };
-    }
-    return null;
-  };
-
-  const expirationStatus = getExpirationStatus();
+  const Icon = CATEGORY_ICON[item.category] ?? CircleDashed;
+  const expiry = expiryStatus(item.expirationDate);
 
   const handleLongPress = () => {
-    Alert.alert(
-      item.name,
-      'What would you like to do?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Edit', onPress: onEdit },
-        { text: 'Delete', style: 'destructive', onPress: onDelete },
-      ]
-    );
+    Alert.alert(item.name, 'What would you like to do?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Edit', onPress: onEdit },
+      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    ]);
   };
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.container,
-        {
-          backgroundColor: Colors[colorScheme ?? 'light'].card,
-          borderColor: Colors[colorScheme ?? 'light'].border,
-        },
-      ]}
-      onPress={onPress}
-      onLongPress={handleLongPress}
-      activeOpacity={0.7}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.titleContainer}>
-          <View
-            style={[
-              styles.categoryIcon,
-              { backgroundColor: Colors[colorScheme ?? 'light'].tint + '20' },
-            ]}
-          >
-            <Ionicons
-              name={getCategoryIcon(item.category) as any}
-              size={20}
-              color={Colors[colorScheme ?? 'light'].tint}
-            />
-          </View>
-          <View style={styles.titleText}>
-            <Text
-              style={[styles.name, { color: Colors[colorScheme ?? 'light'].text }]}
-              numberOfLines={1}
-            >
+    <Card style={styles.card} onPress={onPress} onLongPress={handleLongPress}>
+      <View>
+        <View style={styles.header}>
+          <Icon size={20} color={color.ink} strokeWidth={1.85} />
+          <View style={styles.title}>
+            <Text preset="labelMd" color={color.ink} numberOfLines={1}>
               {item.name}
             </Text>
-            {item.brand && (
-              <Text
-                style={[styles.brand, { color: Colors[colorScheme ?? 'light'].tabIconDefault }]}
-                numberOfLines={1}
-              >
+            {item.brand ? (
+              <Text preset="caption" numberOfLines={1}>
                 {item.brand}
               </Text>
-            )}
+            ) : null}
           </View>
-        </View>
-
-        <View style={styles.quantity}>
-          <Text style={[styles.quantityText, { color: Colors[colorScheme ?? 'light'].text }]}>
-            {item.quantity}
-          </Text>
-          <Text style={[styles.unit, { color: Colors[colorScheme ?? 'light'].tabIconDefault }]}>
-            {item.unit}
+          <Text preset="labelMd" color={color.ink}>
+            {item.quantity} {item.unit}
           </Text>
         </View>
-      </View>
 
-      {/* Status Indicators */}
-      <View style={styles.statusContainer}>
-        <View style={styles.location}>
-          <Ionicons
-            name="location-outline"
-            size={14}
-            color={Colors[colorScheme ?? 'light'].tabIconDefault}
-          />
-          <Text style={[styles.locationText, { color: Colors[colorScheme ?? 'light'].tabIconDefault }]}>
+        <View style={styles.footer}>
+          <Text preset="caption" style={styles.location}>
             {item.location}
           </Text>
-        </View>
 
-        <View style={styles.indicators}>
-          {item.isLowStock && (
-            <View
-              style={[
-                styles.indicator,
-                { backgroundColor: Colors[colorScheme ?? 'light'].destructive + '20' },
-              ]}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={12}
-                color={Colors[colorScheme ?? 'light'].destructive}
-              />
-              <Text
-                style={[styles.indicatorText, { color: Colors[colorScheme ?? 'light'].destructive }]}
-              >
-                Low Stock
+          <View style={styles.status}>
+            {item.isLowStock ? (
+              <View style={styles.statusItem}>
+                <TriangleAlert size={13} color={semantic.danger} strokeWidth={1.85} />
+                <Text preset="caption" color={semantic.danger}>
+                  Running low
+                </Text>
+              </View>
+            ) : null}
+            {expiry ? (
+              <Text preset="caption" color={expiry.color}>
+                {expiry.text}
               </Text>
-            </View>
-          )}
-
-          {expirationStatus && (
-            <View
-              style={[
-                styles.indicator,
-                { backgroundColor: expirationStatus.color + '20' },
-              ]}
-            >
-              <Ionicons
-                name="time-outline"
-                size={12}
-                color={expirationStatus.color}
-              />
-              <Text
-                style={[styles.indicatorText, { color: expirationStatus.color }]}
-              >
-                {expirationStatus.text}
-              </Text>
-            </View>
-          )}
+            ) : null}
+          </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 12,
-  },
-  categoryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  titleText: {
-    flex: 1,
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  brand: {
-    fontSize: 14,
-  },
-  quantity: {
-    alignItems: 'flex-end',
-  },
-  quantityText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  unit: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  statusContainer: {
+  card: { marginBottom: space.sm, gap: space.sm },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  title: { flex: 1, gap: space.xxs },
+  footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: space.sm,
   },
-  location: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  locationText: {
-    fontSize: 12,
-    textTransform: 'capitalize',
-  },
-  indicators: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  indicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  indicatorText: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
+  location: { textTransform: 'capitalize' },
+  status: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  statusItem: { flexDirection: 'row', alignItems: 'center', gap: space.xxs },
 });

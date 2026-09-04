@@ -1,337 +1,337 @@
-import { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ScrollView,
-  Switch,
-  ActivityIndicator,
-  Modal,
-  TextInput,
-} from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Pressable, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { LogOut } from 'lucide-react-native';
+import { router } from 'expo-router';
 import { useAuth, useAuthStore } from '@petra/shared';
-import { Colors } from '../../src/constants/Colors';
-import { useColorScheme } from '../../src/hooks/useColorScheme';
 
-const getApiUrl = () =>
-  Platform.OS === 'android' ? 'http://10.0.2.2:3001/api' : 'http://localhost:3001/api';
+import { color, radius, semantic, space } from '../../src/theme';
+import { Button } from '../../src/components/ui/Button';
+import { Card, onSurface } from '../../src/components/ui/Card';
+import { Chip } from '../../src/components/ui/Chip';
+import { ListRow } from '../../src/components/ui/ListRow';
+import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
+import { SectionHeader } from '../../src/components/ui/SectionHeader';
+import { Text } from '../../src/components/ui/Text';
+import { Callout } from '../../src/components/ui/Callout';
+import { API_URL } from '../../src/config/api';
+
+const DIET_OPTIONS = [
+  'Vegetarian',
+  'Pescatarian',
+  'Gluten-free',
+  'Dairy-free',
+  'No pork',
+  'No shellfish',
+  'Low sodium',
+  'Nut allergy',
+];
+
+const ALLERGY_OPTIONS = [
+  'Shellfish', 'Fish', 'Nuts', 'Peanuts', 'Dairy', 'Gluten', 'Egg', 'Soy', 'Sesame',
+];
 
 interface Profile {
-  bio?: string;
-  age?: number;
-  height?: number;
-  weight?: number;
-  activityLevel?: string;
-  healthGoal?: string;
   dietaryRestrictions?: string[];
+  allergies?: string[];
+  dailyCalorieTarget?: number;
+  dailyProteinTarget?: number;
+  dailyFiberTarget?: number;
+  dailySodiumTarget?: number;
 }
 
-interface UserStats {
-  totalRecipes: number;
-  totalFavorites: number;
-  totalMealPlans: number;
-  totalPantryItems: number;
+interface WasteSummary {
+  totalKgSaved: number;
+  totalValueSaved: number;
+  itemsSaved: number;
+  weakSpotCategory: string | null;
 }
-
-const DIETARY_OPTIONS = ['Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free', 'Halal', 'Kosher', 'Nut-Free'];
-const HEALTH_GOALS = ['WEIGHT_LOSS', 'MUSCLE_GAIN', 'MAINTENANCE', 'GENERAL_HEALTH'];
-const HEALTH_GOAL_LABELS: Record<string, string> = {
-  WEIGHT_LOSS: 'Weight Loss',
-  MUSCLE_GAIN: 'Muscle Gain',
-  MAINTENANCE: 'Maintenance',
-  GENERAL_HEALTH: 'General Health',
-};
 
 export default function ProfileScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
   const { user, logout } = useAuth();
   const token = useAuthStore(state => state.token);
-  const API_URL = getApiUrl();
 
   const [profile, setProfile] = useState<Profile>({});
-  const [stats, setStats] = useState<UserStats | null>(null);
+  const [waste, setWaste] = useState<WasteSummary | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState('FREE');
   const [isLoading, setIsLoading] = useState(true);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [firstName, setFirstName] = useState(user?.firstName || '');
-  const [lastName, setLastName] = useState(user?.lastName || '');
-  const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
+    const headers = { Authorization: `Bearer ${token}` };
     try {
-      const [profileRes, statsRes, subRes] = await Promise.all([
-        fetch(`${API_URL}/users/profile`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/users/stats`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/subscription/status`, { headers: { Authorization: `Bearer ${token}` } }),
+      const [profileRes, subRes, wasteRes] = await Promise.all([
+        fetch(`${API_URL}/users/profile`, { headers }),
+        fetch(`${API_URL}/subscription/status`, { headers }),
+        fetch(`${API_URL}/analytics/waste-summary`, { headers }),
       ]);
-
-      const [profileData, statsData, subData] = await Promise.all([
+      const [profileData, subData, wasteData] = await Promise.all([
         profileRes.json(),
-        statsRes.json(),
         subRes.json(),
+        wasteRes.json(),
       ]);
-
       if (profileData.success) setProfile(profileData.data?.profile || {});
-      if (statsData.success) setStats(statsData.data);
       if (subData.success) setSubscriptionTier(subData.data?.tier || 'FREE');
+      if (wasteData.success) setWaste(wasteData.data);
     } catch {
       // non-fatal
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [token]);
 
-  const saveProfile = async () => {
-    setIsSaving(true);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const toggleField = async (field: 'dietaryRestrictions' | 'allergies', label: string) => {
+    const current = profile[field] ?? [];
+    const next = current.includes(label)
+      ? current.filter(d => d !== label)
+      : [...current, label];
+    setProfile(prev => ({ ...prev, [field]: next }));
     try {
-      const res = await fetch(`${API_URL}/users/profile`, {
+      await fetch(`${API_URL}/users/profile`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName }),
+        body: JSON.stringify({ profile: { [field]: next } }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setShowEditModal(false);
-        Alert.alert('Success', 'Profile updated.');
-      } else {
-        throw new Error(data.error?.message || 'Update failed');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save profile.');
-    } finally {
-      setIsSaving(false);
+    } catch {
+      Alert.alert('Error', 'Failed to update preference.');
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
+      { text: 'Sign out', style: 'destructive', onPress: logout },
     ]);
   };
 
   const handleUpgrade = async () => {
-    Alert.alert('Upgrade to Premium', 'Unlock pantry tracking, multi-day meal plans, and smart shopping lists for $9/month.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Upgrade',
-        onPress: async () => {
-          try {
-            const res = await fetch(`${API_URL}/subscription/upgrade`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const data = await res.json();
-            if (data.success) {
-              setSubscriptionTier('PREMIUM');
-              Alert.alert('Welcome to Premium!', 'Your account has been upgraded.');
+    Alert.alert(
+      'Upgrade to Premium',
+      'Full-week plans, pantry tracking, camera logging, and smarter shopping lists.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Upgrade',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/subscription/upgrade`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const data = await res.json();
+              if (data.success) {
+                setSubscriptionTier('PREMIUM');
+                Alert.alert('Welcome to Premium', 'Your account has been upgraded.');
+              }
+            } catch {
+              Alert.alert('Error', 'Failed to upgrade. Please try again.');
             }
-          } catch {
-            Alert.alert('Error', 'Failed to upgrade. Please try again.');
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.tint} />
+          <LoadingSpinner size="large" />
         </View>
       </SafeAreaView>
     );
   }
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
-          <TouchableOpacity onPress={() => { setFirstName(user?.firstName || ''); setLastName(user?.lastName || ''); setShowEditModal(true); }}>
-            <Ionicons name="pencil-outline" size={22} color={colors.tint} />
-          </TouchableOpacity>
-        </View>
+  const targets = [
+    { label: 'Calories', val: `${profile.dailyCalorieTarget ?? 2150} kcal` },
+    { label: 'Protein', val: `${profile.dailyProteinTarget ?? 140} g` },
+    { label: 'Fibre', val: `${profile.dailyFiberTarget ?? 30} g` },
+    { label: 'Sodium', val: `Under ${profile.dailySodiumTarget ?? 2000} mg` },
+  ];
 
-        {/* User Info */}
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={[styles.avatar, { backgroundColor: colors.tint }]}>
-            <Text style={styles.avatarText}>
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.avatar}>
+            <Text preset="titleMd" color={color.ink}>
               {(user?.firstName?.[0] || '?').toUpperCase()}
             </Text>
           </View>
-          <Text style={[styles.userName, { color: colors.text }]}>
-            {user?.firstName} {user?.lastName}
-          </Text>
-          <Text style={[styles.userEmail, { color: colors.tabIconDefault }]}>{user?.email}</Text>
-
-          <View style={[styles.tierBadge, {
-            backgroundColor: subscriptionTier === 'PREMIUM' ? colors.tint + '20' : colors.muted,
-          }]}>
-            {subscriptionTier === 'PREMIUM' && (
-              <Ionicons name="star" size={14} color={colors.tint} style={{ marginRight: 4 }} />
-            )}
-            <Text style={[styles.tierText, { color: subscriptionTier === 'PREMIUM' ? colors.tint : colors.tabIconDefault }]}>
-              {subscriptionTier === 'PREMIUM' ? 'Premium' : 'Free Plan'}
+          <View style={styles.flex}>
+            <Text preset="titleMd">
+              {user?.firstName} {user?.lastName}
+            </Text>
+            <Text preset="caption">
+              {subscriptionTier === 'PREMIUM'
+                ? 'Premium'
+                : 'Free plan · pantry and week plans locked'}
             </Text>
           </View>
         </View>
 
-        {/* Stats */}
-        {stats && (
-          <View style={styles.statsRow}>
-            {[
-              { label: 'Recipes', value: stats.totalRecipes },
-              { label: 'Favorites', value: stats.totalFavorites },
-              { label: 'Meal Plans', value: stats.totalMealPlans },
-              { label: 'Pantry', value: stats.totalPantryItems },
-            ].map(stat => (
-              <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.statValue, { color: colors.text }]}>{stat.value}</Text>
-                <Text style={[styles.statLabel, { color: colors.tabIconDefault }]}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Subscription */}
-        {subscriptionTier !== 'PREMIUM' && (
-          <View style={[styles.upgradeCard, { backgroundColor: colors.tint + '10', borderColor: colors.tint + '30' }]}>
-            <View style={styles.upgradeContent}>
-              <Ionicons name="star-outline" size={24} color={colors.tint} />
-              <View style={styles.upgradeText}>
-                <Text style={[styles.upgradeTitle, { color: colors.text }]}>Upgrade to Premium</Text>
-                <Text style={[styles.upgradeDesc, { color: colors.tabIconDefault }]}>
-                  Pantry, multi-day meal plans, shopping lists — $9/mo
+        <View style={styles.body}>
+          {/* Waste avoided is the app's proudest number, so it earns a
+              full-bleed forest signature surface rather than a green tint. */}
+          {waste && (
+            <Card surface="forest">
+              <Text preset="caption" color={onSurface.forest} style={styles.eyebrow}>
+                WASTE AVOIDED
+              </Text>
+              <View style={styles.wasteValueRow}>
+                <Text preset="displayMd" color={onSurface.forest}>
+                  {waste.totalKgSaved} kg
                 </Text>
+                {waste.totalValueSaved > 0 && (
+                  <Text preset="bodyMd" color={onSurface.forest}>
+                    ≈ £{waste.totalValueSaved.toFixed(0)}
+                  </Text>
+                )}
               </View>
+              <Text preset="bodyMd" color={onSurface.forest} style={styles.wasteDesc}>
+                {waste.itemsSaved > 0
+                  ? `You've cooked ${waste.itemsSaved} items before they turned.${
+                      waste.weakSpotCategory
+                        ? ` Your weak spot is ${waste.weakSpotCategory
+                            .toLowerCase()
+                            .replace('_', ' ')}.`
+                        : ''
+                    }`
+                  : 'Finish a cook-mode recipe or log a used item to start tracking.'}
+              </Text>
+            </Card>
+          )}
+
+          <View>
+            <SectionHeader title="Diet" />
+            <View style={styles.chipWrap}>
+              {DIET_OPTIONS.map(label => (
+                <Chip
+                  key={label}
+                  label={label}
+                  selected={(profile.dietaryRestrictions ?? []).includes(label)}
+                  onPress={() => toggleField('dietaryRestrictions', label)}
+                />
+              ))}
             </View>
-            <TouchableOpacity
-              style={[styles.upgradeButton, { backgroundColor: colors.tint }]}
-              onPress={handleUpgrade}
-            >
-              <Text style={styles.upgradeButtonText}>Upgrade</Text>
-            </TouchableOpacity>
           </View>
-        )}
 
-        {/* Account Actions */}
-        <View style={[styles.menuSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.menuSectionTitle, { color: colors.tabIconDefault }]}>Account</Text>
+          {/* Allergies are their own control, not a diet preference — the
+              retrieval layer treats them as a hard block rather than a nudge. */}
+          <View>
+            <SectionHeader title="Allergies" />
+            <View style={styles.chipWrap}>
+              {ALLERGY_OPTIONS.map(label => (
+                <Chip
+                  key={label}
+                  label={label}
+                  selected={(profile.allergies ?? []).includes(label)}
+                  onPress={() => toggleField('allergies', label)}
+                />
+              ))}
+            </View>
+            {(profile.allergies ?? []).length > 0 && (
+              <View style={styles.allergyNote}>
+                <Callout tone="allergy" title={`Severe: ${(profile.allergies ?? []).join(', ')}`}>
+                  Petra blocks these recipes outright and flags shared-equipment risk. Ingredient
+                  names are matched automatically, so check the label yourself before you cook.
+                </Callout>
+              </View>
+            )}
+          </View>
 
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]}>
-            <Ionicons name="notifications-outline" size={22} color={colors.text} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.text }]}>Notifications</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.tabIconDefault} />
-          </TouchableOpacity>
+          <View>
+            <SectionHeader title="Daily targets" />
+            <Card padded={false}>
+              {targets.map((t, i) => (
+                <ListRow
+                  key={t.label}
+                  title={t.label}
+                  value={t.val}
+                  last={i === targets.length - 1}
+                />
+              ))}
+            </Card>
+          </View>
 
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]}>
-            <Ionicons name="shield-checkmark-outline" size={22} color={colors.text} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.text }]}>Privacy</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.tabIconDefault} />
-          </TouchableOpacity>
+          {/* Pricing is a documented sub-system: Inter type and a pill CTA,
+              which appear nowhere else in the app. */}
+          {subscriptionTier !== 'PREMIUM' && (
+            <Card surface="soft">
+              <Text preset="pricingCardTitle">Petra Premium</Text>
+              <Text preset="bodyMd" style={styles.premiumDesc}>
+                Full-week plans, pantry inventory with expiry tracking, camera logging, and
+                shopping lists that skip what you already own.
+              </Text>
+              <Button variant="pill" onPress={handleUpgrade} fullWidth>
+                £4.99 / month
+              </Button>
+            </Card>
+          )}
 
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: 'transparent' }]} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={22} color={colors.destructive} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.destructive }]}>Sign Out</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.tabIconDefault} />
-          </TouchableOpacity>
-        </View>
+          <Button variant="secondary" onPress={() => router.push('/onboarding')} fullWidth>
+            Replay the setup flow
+          </Button>
 
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.tabIconDefault }]}>Petra AI v1.0.0</Text>
+          <Pressable
+            style={styles.signOut}
+            onPress={handleLogout}
+            accessibilityRole="button"
+          >
+            <LogOut size={20} color={semantic.danger} strokeWidth={1.85} />
+            <Text preset="labelMd" color={semantic.danger}>
+              Sign out
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
-
-      {/* Edit Name Modal */}
-      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[styles.modal, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity onPress={() => setShowEditModal(false)}>
-              <Text style={[styles.modalCancel, { color: colors.tabIconDefault }]}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Profile</Text>
-            <TouchableOpacity onPress={saveProfile} disabled={isSaving}>
-              {isSaving ? (
-                <ActivityIndicator size="small" color={colors.tint} />
-              ) : (
-                <Text style={[styles.modalDone, { color: colors.tint }]}>Save</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent}>
-            <Text style={[styles.fieldLabel, { color: colors.text }]}>First Name</Text>
-            <TextInput
-              style={[styles.fieldInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="First name"
-              placeholderTextColor={colors.tabIconDefault}
-            />
-            <Text style={[styles.fieldLabel, { color: colors.text }]}>Last Name</Text>
-            <TextInput
-              style={[styles.fieldInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Last name"
-              placeholderTextColor={colors.tabIconDefault}
-            />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: color.canvas },
+  flex: { flex: 1, gap: space.xxs },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, paddingHorizontal: 16, paddingVertical: 12 },
-  title: { fontSize: 24, fontWeight: '700' },
-  section: { margin: 16, borderRadius: 16, borderWidth: 1, padding: 20, alignItems: 'center' },
-  avatar: { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  avatarText: { color: 'white', fontSize: 28, fontWeight: '700' },
-  userName: { fontSize: 20, fontWeight: '600', marginBottom: 4 },
-  userEmail: { fontSize: 14, marginBottom: 12 },
-  tierBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
-  tierText: { fontSize: 13, fontWeight: '600' },
-  statsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
-  statCard: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
-  statValue: { fontSize: 20, fontWeight: '700' },
-  statLabel: { fontSize: 11, marginTop: 2 },
-  upgradeCard: { marginHorizontal: 16, marginBottom: 8, borderRadius: 16, borderWidth: 1, padding: 16 },
-  upgradeContent: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  upgradeText: { flex: 1 },
-  upgradeTitle: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
-  upgradeDesc: { fontSize: 13 },
-  upgradeButton: { borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
-  upgradeButtonText: { color: 'white', fontWeight: '600', fontSize: 15 },
-  menuSection: { marginHorizontal: 16, marginTop: 8, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-  menuSectionTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-  menuIcon: { marginRight: 12 },
-  menuLabel: { flex: 1, fontSize: 16 },
-  footer: { alignItems: 'center', padding: 24 },
-  footerText: { fontSize: 13 },
-  modal: { flex: 1 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, paddingHorizontal: 16, paddingVertical: 14 },
-  modalTitle: { fontSize: 17, fontWeight: '600' },
-  modalCancel: { fontSize: 16 },
-  modalDone: { fontSize: 16, fontWeight: '600' },
-  modalBody: { flex: 1 },
-  modalBodyContent: { padding: 20 },
-  fieldLabel: { fontSize: 15, fontWeight: '600', marginBottom: 8, marginTop: 16 },
-  fieldInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: color.hairline,
+    paddingHorizontal: space.lg,
+    paddingTop: space.xs,
+    paddingBottom: space.md,
+  },
+  avatar: {
+    width: space.xxl,
+    height: space.xxl,
+    borderRadius: radius.full,
+    backgroundColor: color.surfaceStrong,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  body: { padding: space.lg, gap: space.lg },
+  eyebrow: { letterSpacing: 1.2 },
+  wasteValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  wasteDesc: { marginTop: space.xs },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
+  allergyNote: { marginTop: space.sm },
+  premiumDesc: { marginVertical: space.sm },
+  signOut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    paddingVertical: space.md,
+  },
 });

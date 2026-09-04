@@ -102,9 +102,9 @@ export default function RecipesPage() {
   };
 
   const difficultyColor = (d: string) => {
-    if (d === 'EASY') return 'text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400';
-    if (d === 'MEDIUM') return 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400';
-    return 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400';
+    if (d === 'EASY') return 'text-primary bg-secondary';
+    if (d === 'MEDIUM') return 'text-foreground bg-warning';
+    return 'text-destructive bg-secondary';
   };
 
   return (
@@ -112,8 +112,8 @@ export default function RecipesPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Recipes</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+          <h1 className="text-2xl font-medium text-foreground">Recipes</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             Discover, search, and generate custom recipes
           </p>
         </div>
@@ -126,19 +126,19 @@ export default function RecipesPage() {
       {/* Search & Filters */}
       <div className="flex gap-3 mb-6">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search recipes..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+            className="w-full pl-10 pr-4 py-2.5 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-transparent text-sm"
           />
         </div>
         <select
           value={difficulty}
           onChange={e => setDifficulty(e.target.value)}
-          className="px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+          className="px-3 py-2.5 border border-border rounded-xl bg-background text-foreground text-sm focus:ring-2 focus:ring-ring"
         >
           <option value="">All difficulties</option>
           <option value="EASY">Easy</option>
@@ -150,12 +150,12 @@ export default function RecipesPage() {
       {/* Recipe grid */}
       {isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : recipes.length === 0 ? (
         <div className="text-center py-24">
-          <ChefHat className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500 dark:text-gray-400">
+          <ChefHat className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">
             {query ? 'No recipes found for your search' : 'No recipes yet — generate one with AI!'}
           </p>
           <Button onClick={() => setShowGenerateModal(true)} className="mt-4 gap-2">
@@ -166,27 +166,27 @@ export default function RecipesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {recipes.map(recipe => (
-            <div key={recipe.id} className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-md transition-shadow">
+            <div key={recipe.id} className="group bg-background rounded-2xl border border-border overflow-hidden transition-shadow">
               <Link href={`/dashboard/recipes/${recipe.id}`}>
-                <div className="h-36 bg-gradient-to-br from-green-100 to-blue-100 dark:from-green-900/30 dark:to-blue-900/30 flex items-center justify-center">
+                <div className="h-36 bg-secondary flex items-center justify-center">
                   {recipe.imageUrl ? (
                     <img src={recipe.imageUrl} alt={recipe.title} className="w-full h-full object-cover" />
                   ) : (
-                    <ChefHat className="h-10 w-10 text-gray-400" />
+                    <ChefHat className="h-10 w-10 text-muted-foreground" />
                   )}
                 </div>
                 <div className="p-4">
-                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-green-600 transition-colors">
+                  <h3 className="font-medium text-foreground text-sm line-clamp-2 group-active transition-colors">
                     {recipe.title}
                   </h3>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       {recipe.prepTime + recipe.cookTime}m
                     </span>
                     {recipe.rating != null && recipe.rating > 0 && (
                       <span className="flex items-center gap-1">
-                        <Star className="h-3 w-3 text-amber-400" />
+                        <Star className="h-3 w-3 text-foreground" />
                         {recipe.rating.toFixed(1)}
                       </span>
                     )}
@@ -201,8 +201,8 @@ export default function RecipesPage() {
                   onClick={() => toggleFavorite(recipe)}
                   className={`p-1.5 rounded-lg transition-colors ${
                     recipe.isFavorited
-                      ? 'text-red-500 hover:text-red-600'
-                      : 'text-gray-400 hover:text-red-400'
+                      ? 'text-destructive active:text-destructive'
+                      : 'text-muted-foreground active:text-destructive'
                   }`}
                 >
                   <Heart className={`h-4 w-4 ${recipe.isFavorited ? 'fill-current' : ''}`} />
@@ -216,9 +216,9 @@ export default function RecipesPage() {
       {/* Generate Recipe Modal */}
       {showGenerateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-green-600" />
+          <div className="bg-background rounded-2xl w-full max-w-lg p-6">
+            <h2 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
               Generate Recipe with AI
             </h2>
 
@@ -229,7 +229,7 @@ export default function RecipesPage() {
                   onChange={e => setGeneratePrompt(e.target.value)}
                   placeholder="Describe the recipe you want, e.g. 'A healthy pasta dish with spinach and chicken, under 30 minutes'"
                   rows={4}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 text-sm resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-border rounded-xl bg-secondary text-foreground placeholder:text-muted-foreground text-sm resize-none focus:ring-2 focus:ring-ring focus:border-transparent"
                 />
                 <div className="flex gap-3 mt-4">
                   <Button
@@ -251,8 +251,8 @@ export default function RecipesPage() {
               </>
             ) : (
               <>
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 max-h-96 overflow-y-auto">
-                  <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-sans">
+                <div className="bg-secondary rounded-xl p-4 max-h-96 overflow-y-auto">
+                  <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">
                     {generatedRecipe}
                   </pre>
                 </div>

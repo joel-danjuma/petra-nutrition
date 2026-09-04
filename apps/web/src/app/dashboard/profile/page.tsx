@@ -135,55 +135,55 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Profile</h1>
+      <h1 className="text-2xl font-medium text-foreground">Profile</h1>
 
       {/* Avatar & Name */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-        <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Account Info</h2>
+      <div className="bg-background rounded-2xl border border-border p-6">
+        <h2 className="font-medium text-foreground mb-4">Account Info</h2>
         <div className="flex items-center gap-4 mb-5">
           <div className="relative">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white text-xl font-bold">
+            <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white text-xl font-medium">
               {user?.firstName?.[0]?.toUpperCase() ?? 'U'}
             </div>
             <button
               onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-700 transition-colors"
+              className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center active:bg-primary transition-colors"
             >
               <Camera className="h-3 w-3" />
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadAvatar} />
           </div>
           <div>
-            <p className="font-medium text-gray-900 dark:text-white">{user?.firstName} {user?.lastName}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
+            <p className="font-medium text-foreground">{user?.firstName} {user?.lastName}</p>
+            <p className="text-sm text-muted-foreground">{user?.email}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">First name</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">First name</label>
             <input
               type="text"
               value={formData.firstName}
               onChange={e => setFormData(p => ({ ...p, firstName: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Last name</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Last name</label>
             <input
               type="text"
               value={formData.lastName}
               onChange={e => setFormData(p => ({ ...p, lastName: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
         </div>
       </div>
 
       {/* Health Stats */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-        <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Health Stats</h2>
+      <div className="bg-background rounded-2xl border border-border p-6">
+        <h2 className="font-medium text-foreground mb-4">Health Stats</h2>
         <div className="grid grid-cols-3 gap-3 mb-4">
           {[
             { label: 'Age', key: 'age', placeholder: 'years', type: 'number' },
@@ -191,23 +191,23 @@ export default function ProfilePage() {
             { label: 'Weight (kg)', key: 'weight', placeholder: 'kg', type: 'number' },
           ].map(field => (
             <div key={field.key}>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{field.label}</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">{field.label}</label>
               <input
                 type={field.type}
                 placeholder={field.placeholder}
                 value={(formData.profile as any)[field.key]}
                 onChange={e => setFormData(p => ({ ...p, profile: { ...p.profile, [field.key]: e.target.value } }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
               />
             </div>
           ))}
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Activity Level</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Activity Level</label>
           <select
             value={formData.profile.activityLevel}
             onChange={e => setFormData(p => ({ ...p, profile: { ...p.profile, activityLevel: e.target.value } }))}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+            className="w-full px-3 py-2 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
           >
             <option value="">Select activity level</option>
             {ACTIVITY_LEVELS.map(l => <option key={l} value={l}>{l.replace(/_/g, ' ')}</option>)}
@@ -216,8 +216,8 @@ export default function ProfilePage() {
       </div>
 
       {/* Dietary Preferences */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-        <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Dietary Preferences</h2>
+      <div className="bg-background rounded-2xl border border-border p-6">
+        <h2 className="font-medium text-foreground mb-4">Dietary Preferences</h2>
         <div className="flex flex-wrap gap-2 mb-5">
           {DIETARY_OPTIONS.map(opt => (
             <button
@@ -225,8 +225,8 @@ export default function ProfilePage() {
               onClick={() => toggleArrayValue('dietaryRestrictions', opt)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
                 formData.profile.dietaryRestrictions.includes(opt)
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:border-green-400'
+                  ? 'bg-primary text-white border-border'
+                  : 'bg-background text-muted-foreground border-border active:border-border'
               }`}
             >
               {opt}
@@ -234,16 +234,16 @@ export default function ProfilePage() {
           ))}
         </div>
 
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Health Goals</h3>
+        <h3 className="text-sm font-medium text-muted-foreground mb-2">Health Goals</h3>
         <div className="flex flex-wrap gap-2">
           {HEALTH_GOALS.map(goal => (
             <button
               key={goal}
               onClick={() => toggleArrayValue('healthGoals', goal)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+              className={`px-3 py-1.5 rounded-sm text-xs font-medium transition-colors border ${
                 formData.profile.healthGoals.includes(goal)
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:border-blue-400'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-background text-muted-foreground border-border'
               }`}
             >
               {goal.replace(/_/g, ' ')}
@@ -253,21 +253,21 @@ export default function ProfilePage() {
       </div>
 
       {/* Subscription */}
-      <div id="subscription" className={`rounded-2xl border p-6 ${isPremium ? 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 border-amber-200 dark:border-amber-800' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'}`}>
+      <div id="subscription" className={`rounded-2xl border p-6 ${isPremium ? 'bg-warning border-border' : 'bg-background border-border'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Crown className={`h-5 w-5 ${isPremium ? 'text-amber-500' : 'text-gray-400'}`} />
+            <Crown className={`h-5 w-5 ${isPremium ? 'text-foreground' : 'text-muted-foreground'}`} />
             <div>
-              <p className="font-semibold text-gray-900 dark:text-white">
+              <p className="font-medium text-foreground">
                 {isPremium ? 'Premium Plan' : 'Free Plan'}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 {isPremium ? 'All features unlocked' : 'Upgrade to unlock pantry, meal plans, and shopping lists'}
               </p>
             </div>
           </div>
           {!isPremium && (
-            <Button onClick={upgradeToPremium} disabled={isUpgrading} className="gap-2 bg-amber-600 hover:bg-amber-700">
+            <Button onClick={upgradeToPremium} disabled={isUpgrading} className="gap-2">
               {isUpgrading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Upgrade
             </Button>

@@ -105,8 +105,8 @@ export default function MealPlansPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meal Plans</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Plan your meals for the week</p>
+          <h1 className="text-2xl font-medium text-foreground">Meal Plans</h1>
+          <p className="text-muted-foreground text-sm mt-1">Plan your meals for the week</p>
         </div>
         <Button onClick={() => setShowGenerateModal(true)} className="gap-2">
           <Sparkles className="h-4 w-4" />
@@ -117,12 +117,12 @@ export default function MealPlansPage() {
       {/* Plans */}
       {isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : plans.length === 0 ? (
         <div className="text-center py-24">
-          <Calendar className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500 dark:text-gray-400">No meal plans yet</p>
+          <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">No meal plans yet</p>
           <Button onClick={() => setShowGenerateModal(true)} className="mt-4 gap-2">
             <Sparkles className="h-4 w-4" />
             Create Your First Plan
@@ -131,16 +131,16 @@ export default function MealPlansPage() {
       ) : (
         <div className="space-y-4">
           {plans.map(plan => (
-            <div key={plan.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
+            <div key={plan.id} className="bg-background rounded-2xl border border-border p-5">
               <div className="flex items-start justify-between gap-4">
                 <Link href={`/dashboard/meal-plans/${plan.id}`} className="flex-1 min-w-0 group">
-                  <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-green-600 transition-colors">
+                  <h3 className="font-medium text-foreground group-active transition-colors">
                     {plan.name}
                   </h3>
                   {plan.description && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">{plan.description}</p>
+                    <p className="text-sm text-muted-foreground mt-1 truncate">{plan.description}</p>
                   )}
-                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" />
                       {new Date(plan.startDate).toLocaleDateString()} – {new Date(plan.endDate).toLocaleDateString()}
@@ -149,10 +149,10 @@ export default function MealPlansPage() {
                   </div>
                 </Link>
                 <div className="flex gap-2 shrink-0">
-                  <button onClick={() => duplicatePlan(plan.id)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                  <button onClick={() => duplicatePlan(plan.id)} className="p-1.5 text-muted-foreground active:text-foreground rounded-lg active:bg-secondary transition-colors">
                     <Copy className="h-4 w-4" />
                   </button>
-                  <button onClick={() => deletePlan(plan.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                  <button onClick={() => deletePlan(plan.id)} className="p-1.5 text-muted-foreground active:text-destructive rounded-lg active:bg-secondary transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -165,9 +165,9 @@ export default function MealPlansPage() {
       {/* Generate Modal */}
       {showGenerateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-green-600" />
+          <div className="bg-background rounded-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
               Generate Meal Plan
             </h2>
 
@@ -175,11 +175,11 @@ export default function MealPlansPage() {
               <>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of days</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Number of days</label>
                     <select
                       value={generateForm.days}
                       onChange={e => setGenerateForm(p => ({ ...p, days: parseInt(e.target.value) }))}
-                      className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+                      className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
                     >
                       <option value={1}>1 day (Free)</option>
                       <option value={3}>3 days (Premium)</option>
@@ -188,13 +188,13 @@ export default function MealPlansPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Preferences (optional)</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Preferences (optional)</label>
                     <textarea
                       value={generateForm.preferences}
                       onChange={e => setGenerateForm(p => ({ ...p, preferences: e.target.value }))}
                       placeholder="E.g. vegetarian, low-carb, family of 4, budget-friendly..."
                       rows={3}
-                      className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm resize-none focus:ring-2 focus:ring-ring focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -208,10 +208,10 @@ export default function MealPlansPage() {
               </>
             ) : (
               <>
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 max-h-80 overflow-y-auto">
-                  <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-sans">{generatedContent}</pre>
+                <div className="bg-secondary rounded-xl p-4 max-h-80 overflow-y-auto">
+                  <pre className="text-xs text-foreground whitespace-pre-wrap font-sans">{generatedContent}</pre>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Copy this plan and create a new meal plan manually, or use the AI Chat to save it.
                 </p>
                 <div className="flex gap-3 mt-4">

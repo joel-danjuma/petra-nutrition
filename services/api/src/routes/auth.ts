@@ -21,7 +21,7 @@ router.post('/register',
 router.post('/login',
   validate([
     validators.email,
-    validators.password,
+    validators.loginPassword,
   ]),
   asyncHandler(authController.login.bind(authController))
 );

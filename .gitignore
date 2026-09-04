@@ -99,3 +99,10 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Local embedding model weights, downloaded on first run of the retrieval
+# service (~24MB). Regenerated automatically; never committed.
+.model-cache/
+
+# TypeScript incremental build state
+*.tsbuildinfo

@@ -12,32 +12,34 @@ datasource db {
 
 // User and Authentication
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  firstName         String
-  lastName          String
-  passwordHash      String
-  isEmailVerified   Boolean   @default(false)
+  id                     String           @id @default(uuid())
+  email                  String           @unique
+  firstName              String
+  lastName               String
+  passwordHash           String
+  isEmailVerified        Boolean          @default(false)
   emailVerificationToken String?
-  passwordResetToken String?
-  passwordResetExpires DateTime?
-  subscriptionTier  SubscriptionTier @default(FREE)
-  avatarUrl         String?
-  lastLoginAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  passwordResetToken     String?
+  passwordResetExpires   DateTime?
+  subscriptionTier       SubscriptionTier @default(FREE)
+  avatarUrl              String?
+  lastLoginAt            DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
 
   // Relations
-  profile           UserProfile?
-  pantryItems       PantryItem[]
-  recipes           Recipe[]
-  mealPlans         MealPlan[]
-  shoppingLists     ShoppingList[]
-  chatSessions      ChatSession[]
-  favorites         UserFavorite[]
-  ratings           UserRating[]
-  subscriptions     Subscription[]
-  payments          Payment[]
+  profile         UserProfile?
+  pantryItems     PantryItem[]
+  recipes         Recipe[]
+  mealPlans       MealPlan[]
+  shoppingLists   ShoppingList[]
+  chatSessions    ChatSession[]
+  favorites       UserFavorite[]
+  ratings         UserRating[]
+  subscriptions   Subscription[]
+  payments        Payment[]
+  wasteLogs       PantryWasteLog[]
+  mealCompletions MealCompletion[]
 
   @@map("users")
 }
@@ -58,14 +60,14 @@ model Subscription {
 }
 
 model Payment {
-  id        String        @id @default(uuid())
-  userId    String
-  amount    Float
-  currency  String        @default("usd")
-  status    PaymentStatus @default(PENDING)
-  provider  String?
+  id         String        @id @default(uuid())
+  userId     String
+  amount     Float
+  currency   String        @default("usd")
+  status     PaymentStatus @default(PENDING)
+  provider   String?
   externalId String?
-  createdAt DateTime      @default(now())
+  createdAt  DateTime      @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -73,18 +75,26 @@ model Payment {
 }
 
 model UserProfile {
-  id                  String   @id @default(uuid())
-  userId              String   @unique
-  age                 Int?
-  height              Float?   // in cm
-  weight              Float?   // in kg
-  activityLevel       ActivityLevel?
-  dietaryRestrictions String[] @default([])
-  allergies           String[] @default([])
-  healthGoals         HealthGoal[] @default([])
-  cuisinePreferences  String[] @default([])
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                    String         @id @default(uuid())
+  userId                String         @unique
+  age                   Int?
+  height                Float? // in cm
+  weight                Float? // in kg
+  activityLevel         ActivityLevel?
+  dietaryRestrictions   String[]       @default([])
+  allergies             String[]       @default([])
+  healthGoals           HealthGoal[]   @default([])
+  cuisinePreferences    String[]       @default([])
+  householdSize         Int?
+  cookingSkill          CookingSkill?
+  onboardingCompletedAt DateTime?
+  dailyCalorieTarget    Float?
+  dailyProteinTarget    Float? // in grams
+  dailyFiberTarget      Float? // in grams
+  dailySodiumTarget     Float? // in mg
+  dailyVegServings      Float?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -94,40 +104,53 @@ model UserProfile {
 
 // Recipe System
 model Recipe {
-  id            String       @id @default(uuid())
+  id            String     @id @default(uuid())
   title         String
   description   String?
   imageUrl      String?
   servings      Int
-  prepTime      Int          // in minutes
-  cookTime      Int          // in minutes
-  totalTime     Int          // in minutes
+  prepTime      Int // in minutes
+  cookTime      Int // in minutes
+  totalTime     Int // in minutes
   difficulty    Difficulty
   cuisine       String?
-  dietaryTags   String[]     @default([])
-  rating        Float?       @default(0)
-  reviewCount   Int          @default(0)
+  /// Course, not diet: Dessert, Breakfast, Starter, Side, Chicken, Seafood…
+  /// Needed so a planner doesn't put brownies in a dinner slot.
+  mealCategory  String?
+  dietaryTags   String[]   @default([])
+  rating        Float?     @default(0)
+  reviewCount   Int        @default(0)
   createdById   String?
-  isAIGenerated Boolean      @default(false)
+  isAIGenerated Boolean    @default(false)
   source        String?
-  isPublic      Boolean      @default(true)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  isPublic      Boolean    @default(true)
+
+  /// Food-safety guidance surfaced as the "Cook it safe" callout — probe
+  /// temperatures, raw-protein handling, allergen cross-contact.
+  safetyNote    String?
+  /// How to use the whole ingredient and what to do with the leftovers.
+  /// Surfaced as the "Nothing gets binned" callout.
+  zeroWasteNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  createdBy     User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  ingredients   RecipeIngredient[]
-  instructions  RecipeInstruction[]
-  nutrition     RecipeNutrition?
-  favorites     UserFavorite[]
-  ratings       UserRating[]
-  mealPlanMeals MealPlanMeal[]
+  createdBy       User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  ingredients     RecipeIngredient[]
+  instructions    RecipeInstruction[]
+  nutrition       RecipeNutrition?
+  embedding       RecipeEmbedding?
+  favorites       UserFavorite[]
+  ratings         UserRating[]
+  mealPlanMeals   MealPlanMeal[]
+  mealCompletions MealCompletion[]
 
   @@map("recipes")
 }
 
 model RecipeIngredient {
-  id       String @id @default(uuid())
+  id       String  @id @default(uuid())
   recipeId String
   name     String
   amount   Float
@@ -138,29 +161,53 @@ model RecipeIngredient {
   // Relations
   recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 
+  @@index([recipeId])
   @@map("recipe_ingredients")
 }
 
 model RecipeInstruction {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   recipeId    String
   step        Int
   instruction String
-  duration    Int?   // in minutes
-  
+  duration    Int? // in minutes
+  /// Optional aside shown beside this step in Cook Mode — the technique note
+  /// or safety check a good cook would say out loud at this point.
+  tip         String?
+
   // Relations
   recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 
+  @@index([recipeId])
   @@map("recipe_instructions")
+}
+
+/// Semantic search vectors, kept out of Recipe so ordinary recipe reads don't
+/// drag several hundred floats per row. Stored as Float[] rather than a
+/// pgvector column: the dev Postgres image has no `vector` extension, and at
+/// this corpus size cosine in Node is sub-millisecond. `RetrievalService` is
+/// the only consumer, so swapping in pgvector later touches one file.
+model RecipeEmbedding {
+  id        String   @id @default(uuid())
+  recipeId  String   @unique
+  vector    Float[]
+  /// Which model produced this vector — vectors from different models are not
+  /// comparable, so a model change must invalidate the whole table.
+  model     String
+  updatedAt DateTime @updatedAt
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_embeddings")
 }
 
 model RecipeNutrition {
   id       String @id @default(uuid())
   recipeId String @unique
   calories Float
-  protein  Float  // in grams
-  carbs    Float  // in grams
-  fat      Float  // in grams
+  protein  Float // in grams
+  carbs    Float // in grams
+  fat      Float // in grams
   fiber    Float?
   sugar    Float?
   sodium   Float? // in mg
@@ -173,48 +220,69 @@ model RecipeNutrition {
 
 // Pantry Management
 model PantryItem {
-  id                 String       @id @default(uuid())
-  userId             String
-  name               String
-  category           ItemCategory
-  quantity           Float
-  unit               String
-  location           StorageLocation @default(PANTRY)
-  purchaseDate       DateTime?
-  expirationDate     DateTime?
-  barcode            String?
-  brand              String?
-  notes              String?
-  imageUrl           String?
-  isLowStock         Boolean      @default(false)
-  lowStockThreshold  Float        @default(1)
-  nutritionPer100g   Json?        // Flexible nutrition data
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  id                String          @id @default(uuid())
+  userId            String
+  name              String
+  category          ItemCategory
+  quantity          Float
+  unit              String
+  location          StorageLocation @default(PANTRY)
+  purchaseDate      DateTime?
+  expirationDate    DateTime?
+  barcode           String?
+  brand             String?
+  notes             String?
+  imageUrl          String?
+  isLowStock        Boolean         @default(false)
+  lowStockThreshold Float           @default(1)
+  nutritionPer100g  Json? // Flexible nutrition data
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("pantry_items")
+}
+
+// Waste / usage tracking — logged when a pantry item is consumed or discarded
+model PantryWasteLog {
+  id                   String       @id @default(uuid())
+  userId               String
+  itemName             String
+  category             ItemCategory
+  action               WasteAction
+  quantity             Float
+  unit                 String
+  estimatedWeightGrams Float?
+  estimatedValue       Float? // approximate, see AnalyticsService.BLENDED_RATE_PER_GRAM
+  occurredAt           DateTime     @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt])
+  @@map("pantry_waste_logs")
 }
 
 // Meal Planning
 model MealPlan {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   userId          String
   name            String
   description     String?
   startDate       DateTime
   endDate         DateTime
-  isTemplate      Boolean   @default(false)
-  tags            String[]  @default([])
-  targetNutrition Json?     // Daily nutrition targets
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  isTemplate      Boolean  @default(false)
+  tags            String[] @default([])
+  targetNutrition Json? // Daily nutrition targets
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
-  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  meals MealPlanMeal[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meals         MealPlanMeal[]
   shoppingLists ShoppingList[]
 
   @@map("meal_plans")
@@ -226,9 +294,13 @@ model MealPlanMeal {
   date       DateTime @db.Date
   mealType   MealType
   recipeId   String?
-  customName String?  // for non-recipe meals
+  customName String? // for non-recipe meals
   servings   Int      @default(1)
   notes      String?
+  /// Short label shown as a chip on the meal card — "Leftovers", "Batch",
+  /// "Zero waste", "Uses 3 expiring". Free text so the planner can explain
+  /// itself without a migration each time it learns a new reason.
+  tag        String?
 
   // Relations
   mealPlan MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
@@ -238,25 +310,46 @@ model MealPlanMeal {
   @@map("meal_plan_meals")
 }
 
-// Shopping Lists
-model ShoppingList {
-  id            String    @id @default(uuid())
-  userId        String
-  name          String
-  description   String?
-  mealPlanId    String?   // if generated from meal plan
-  isTemplate    Boolean   @default(false)
-  estimatedTotal Float?
-  targetStore   String?
-  tags          String[]  @default([])
-  isCompleted   Boolean   @default(false)
-  completedAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// Logged when a user finishes Cook Mode for a recipe — powers the "today's nutrition" progress
+model MealCompletion {
+  id          String    @id @default(uuid())
+  userId      String
+  recipeId    String?
+  mealType    MealType?
+  date        DateTime  @db.Date
+  calories    Float
+  protein     Float // in grams
+  fiber       Float? // in grams
+  servings    Int       @default(1)
+  completedAt DateTime  @default(now())
 
   // Relations
-  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mealPlan MealPlan?           @relation(fields: [mealPlanId], references: [id], onDelete: SetNull)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@map("meal_completions")
+}
+
+// Shopping Lists
+model ShoppingList {
+  id             String    @id @default(uuid())
+  userId         String
+  name           String
+  description    String?
+  mealPlanId     String? // if generated from meal plan
+  isTemplate     Boolean   @default(false)
+  estimatedTotal Float?
+  targetStore    String?
+  tags           String[]  @default([])
+  isCompleted    Boolean   @default(false)
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealPlan MealPlan?          @relation(fields: [mealPlanId], references: [id], onDelete: SetNull)
   items    ShoppingListItem[]
 
   @@map("shopping_lists")
@@ -272,7 +365,7 @@ model ShoppingListItem {
   isCompleted    Boolean      @default(false)
   estimatedPrice Float?
   notes          String?
-  recipeId       String?      // if item is from a recipe
+  recipeId       String? // if item is from a recipe
   recipeName     String?
   priority       Priority     @default(MEDIUM)
   store          String?
@@ -285,18 +378,19 @@ model ShoppingListItem {
 
 // Chat System
 model ChatSession {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   userId    String
   title     String?
-  context   Json?     // User preferences, pantry items, etc.
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  context   Json? // User preferences, pantry items, etc.
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
 
+  @@index([userId])
   @@map("chat_sessions")
 }
 
@@ -304,22 +398,23 @@ model ChatMessage {
   id          String      @id @default(uuid())
   sessionId   String
   role        MessageRole
-  content     Json        // Array of content objects (text, images, etc.)
+  content     Json // Array of content objects (text, images, etc.)
   timestamp   DateTime    @default(now())
   isStreaming Boolean     @default(false)
-  metadata    Json?       // Model info, tokens, processing time, etc.
+  metadata    Json? // Model info, tokens, processing time, etc.
 
   // Relations
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId])
   @@map("chat_messages")
 }
 
 // User Interactions
 model UserFavorite {
-  id       String @id @default(uuid())
-  userId   String
-  recipeId String
+  id        String   @id @default(uuid())
+  userId    String
+  recipeId  String
   createdAt DateTime @default(now())
 
   // Relations
@@ -331,11 +426,11 @@ model UserFavorite {
 }
 
 model UserRating {
-  id       String @id @default(uuid())
-  userId   String
-  recipeId String
-  rating   Int    @db.SmallInt // 1-5 stars
-  review   String?
+  id        String   @id @default(uuid())
+  userId    String
+  recipeId  String
+  rating    Int      @db.SmallInt // 1-5 stars
+  review    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -396,6 +491,17 @@ enum StorageLocation {
   PANTRY
   FRIDGE
   FREEZER
+}
+
+enum CookingSkill {
+  BEGINNER
+  CONFIDENT
+  EXPERIENCED
+}
+
+enum WasteAction {
+  USED
+  WASTED
 }
 
 enum MealType {

@@ -1,13 +1,8 @@
 import React from 'react';
-import {
-  View,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../constants/Colors';
-import { useColorScheme } from '../hooks/useColorScheme';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Search, X } from 'lucide-react-native';
+
+import { color, fontSize, radius, space, type } from '../theme';
 
 interface SearchBarProps {
   value: string;
@@ -18,66 +13,49 @@ interface SearchBarProps {
   onBlur?: () => void;
 }
 
+/**
+ * Inputs take the system's small radius and its single hairline border —
+ * no fill, no shadow, no focus glow beyond the border.
+ */
 export function SearchBar({
   value,
   onChangeText,
-  placeholder = 'Search...',
+  placeholder = 'Search',
   onClear,
   onFocus,
   onBlur,
 }: SearchBarProps) {
-  const colorScheme = useColorScheme();
-
   const handleClear = () => {
     onChangeText('');
     onClear?.();
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: Colors[colorScheme ?? 'light'].card,
-          borderColor: Colors[colorScheme ?? 'light'].border,
-        },
-      ]}
-    >
-      <Ionicons
-        name="search-outline"
-        size={20}
-        color={Colors[colorScheme ?? 'light'].tabIconDefault}
-        style={styles.searchIcon}
-      />
-      
+    <View style={styles.container}>
+      <Search size={18} color={color.muted} strokeWidth={1.85} />
+
       <TextInput
-        style={[
-          styles.input,
-          { color: Colors[colorScheme ?? 'light'].text },
-        ]}
+        style={styles.input}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={Colors[colorScheme ?? 'light'].tabIconDefault}
+        placeholderTextColor={color.muted}
         onFocus={onFocus}
         onBlur={onBlur}
         returnKeyType="search"
         autoCorrect={false}
         autoCapitalize="none"
       />
-      
+
       {value.length > 0 && (
-        <TouchableOpacity
+        <Pressable
           onPress={handleClear}
-          style={styles.clearButton}
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons
-            name="close-circle"
-            size={20}
-            color={Colors[colorScheme ?? 'light'].tabIconDefault}
-          />
-        </TouchableOpacity>
+          <X size={18} color={color.muted} strokeWidth={1.85} />
+        </Pressable>
       )}
     </View>
   );
@@ -87,22 +65,19 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.sm,
+    borderRadius: radius.sm,
     borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
+    borderColor: color.hairline,
+    backgroundColor: color.canvas,
   },
   input: {
+    ...type.bodyMd,
     flex: 1,
-    fontSize: 16,
+    fontSize: fontSize.labelMd,
     paddingVertical: 0,
-  },
-  clearButton: {
-    marginLeft: 8,
+    color: color.ink,
   },
 });

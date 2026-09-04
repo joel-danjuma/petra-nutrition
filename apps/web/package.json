@@ -4,7 +4,10 @@
   "description": "Petra AI Web Frontend",
   "private": true,
   "scripts": {
+    "design:tokens": "NODE_NO_WARNINGS=1 node ../../scripts/gen-design-tokens.mjs",
+    "predev": "pnpm run design:tokens",
     "dev": "next dev",
+    "prebuild": "pnpm run design:tokens",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

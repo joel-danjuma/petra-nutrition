@@ -1,6 +1,6 @@
 import { z } from 'zod';
+import { MessageRoleSchema } from './enums';
 
-export const MessageRoleSchema = z.enum(['user', 'assistant', 'system']);
 
 export const MessageContentSchema = z.object({
   type: z.enum(['text', 'image', 'recipe_card', 'meal_plan_card', 'shopping_list_card']),
@@ -99,7 +99,6 @@ export const AIResponseSchema = z.object({
   sources: z.array(z.string()).optional(), // source URLs or references
 });
 
-export type MessageRole = z.infer<typeof MessageRoleSchema>;
 export type MessageContent = z.infer<typeof MessageContentSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatSession = z.infer<typeof ChatSessionSchema>;

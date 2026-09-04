@@ -1,24 +1,16 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-} from 'react-native';
+import { View, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@petra/shared';
-import { Colors } from '../../src/constants/Colors';
-import { useColorScheme } from '../../src/hooks/useColorScheme';
-import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
+
+import { color, space } from '../../src/theme';
+import { Button } from '../../src/components/ui/Button';
+import { Input } from '../../src/components/ui/Input';
+import { Text } from '../../src/components/ui/Text';
 
 export default function AuthScreen() {
-  const colorScheme = useColorScheme();
   const { login, register } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -52,19 +44,18 @@ export default function AuthScreen() {
 
     try {
       if (isLogin) {
-        await login({
-          email: formData.email.trim(),
-          password: formData.password,
-        });
+        await login({ email: formData.email.trim(), password: formData.password });
       } else {
         await register({
           firstName: formData.firstName.trim(),
           lastName: formData.lastName.trim(),
           email: formData.email.trim(),
           password: formData.password,
+          // Required by CreateUser; everyone starts on the free tier.
+          subscriptionTier: 'FREE',
         });
       }
-      
+
       router.replace('/(tabs)');
     } catch (error: any) {
       Alert.alert('Error', error.message || `${isLogin ? 'Login' : 'Registration'} failed`);
@@ -78,136 +69,99 @@ export default function AuthScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+        style={styles.flex}
       >
         <View style={styles.content}>
-          {/* Header */}
+          {/* No logo asset exists in this system, so the brand is set in type
+              at weight 500 — the documented stand-in for a wordmark. */}
           <View style={styles.header}>
-            <View style={[styles.logoContainer, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}>
-              <Ionicons name="restaurant" size={32} color="white" />
-            </View>
-            <Text style={[styles.title, { color: Colors[colorScheme ?? 'light'].text }]}>
-              Petra AI
+            <Text preset="displayMd" align="center">
+              Petra Nutrition
             </Text>
-            <Text style={[styles.subtitle, { color: Colors[colorScheme ?? 'light'].tabIconDefault }]}>
-              Your Intelligent Kitchen Assistant
+            <Text preset="bodyMd" align="center">
+              Cook with what you already have.
             </Text>
           </View>
 
-          {/* Form */}
           <View style={styles.form}>
             {!isLogin && (
               <View style={styles.nameRow}>
-                <TextInput
-                  style={[styles.nameInput, { 
-                    backgroundColor: Colors[colorScheme ?? 'light'].background,
-                    borderColor: Colors[colorScheme ?? 'light'].tabIconDefault + '30',
-                    color: Colors[colorScheme ?? 'light'].text
-                  }]}
-                  placeholder="First Name"
-                  placeholderTextColor={Colors[colorScheme ?? 'light'].tabIconDefault}
+                <Input
+                  containerStyle={styles.flex}
+                  label="First name"
                   value={formData.firstName}
-                  onChangeText={(value) => handleInputChange('firstName', value)}
+                  onChangeText={value => handleInputChange('firstName', value)}
                   autoCapitalize="words"
                 />
-                <TextInput
-                  style={[styles.nameInput, { 
-                    backgroundColor: Colors[colorScheme ?? 'light'].background,
-                    borderColor: Colors[colorScheme ?? 'light'].tabIconDefault + '30',
-                    color: Colors[colorScheme ?? 'light'].text
-                  }]}
-                  placeholder="Last Name"
-                  placeholderTextColor={Colors[colorScheme ?? 'light'].tabIconDefault}
+                <Input
+                  containerStyle={styles.flex}
+                  label="Last name"
                   value={formData.lastName}
-                  onChangeText={(value) => handleInputChange('lastName', value)}
+                  onChangeText={value => handleInputChange('lastName', value)}
                   autoCapitalize="words"
                 />
               </View>
             )}
 
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: Colors[colorScheme ?? 'light'].background,
-                borderColor: Colors[colorScheme ?? 'light'].tabIconDefault + '30',
-                color: Colors[colorScheme ?? 'light'].text
-              }]}
-              placeholder="Email"
-              placeholderTextColor={Colors[colorScheme ?? 'light'].tabIconDefault}
+            <Input
+              label="Email"
               value={formData.email}
-              onChangeText={(value) => handleInputChange('email', value)}
+              onChangeText={value => handleInputChange('email', value)}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
             />
 
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={[styles.passwordInput, { 
-                  backgroundColor: Colors[colorScheme ?? 'light'].background,
-                  borderColor: Colors[colorScheme ?? 'light'].tabIconDefault + '30',
-                  color: Colors[colorScheme ?? 'light'].text
-                }]}
-                placeholder="Password"
-                placeholderTextColor={Colors[colorScheme ?? 'light'].tabIconDefault}
-                value={formData.password}
-                onChangeText={(value) => handleInputChange('password', value)}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                style={styles.passwordToggle}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Ionicons
-                  name={showPassword ? 'eye-off' : 'eye'}
-                  size={20}
-                  color={Colors[colorScheme ?? 'light'].tabIconDefault}
-                />
-              </TouchableOpacity>
-            </View>
+            <Input
+              label="Password"
+              value={formData.password}
+              onChangeText={value => handleInputChange('password', value)}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              trailing={
+                <Pressable
+                  onPress={() => setShowPassword(!showPassword)}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} color={color.muted} strokeWidth={1.85} />
+                  ) : (
+                    <Eye size={18} color={color.muted} strokeWidth={1.85} />
+                  )}
+                </Pressable>
+              }
+            />
 
             {!isLogin && (
-              <TextInput
-                style={[styles.input, { 
-                  backgroundColor: Colors[colorScheme ?? 'light'].background,
-                  borderColor: Colors[colorScheme ?? 'light'].tabIconDefault + '30',
-                  color: Colors[colorScheme ?? 'light'].text
-                }]}
-                placeholder="Confirm Password"
-                placeholderTextColor={Colors[colorScheme ?? 'light'].tabIconDefault}
+              <Input
+                label="Confirm password"
                 value={formData.confirmPassword}
-                onChangeText={(value) => handleInputChange('confirmPassword', value)}
+                onChangeText={value => handleInputChange('confirmPassword', value)}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
               />
             )}
 
-            <TouchableOpacity
-              style={[styles.submitButton, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
-              onPress={handleSubmit}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <LoadingSpinner color="white" />
-              ) : (
-                <Text style={styles.submitButtonText}>
-                  {isLogin ? 'Sign In' : 'Create Account'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            <Button onPress={handleSubmit} loading={isLoading} fullWidth style={styles.submit}>
+              {isLogin ? 'Sign in' : 'Create account'}
+            </Button>
 
-            <TouchableOpacity
-              style={styles.switchButton}
+            <Pressable
+              style={styles.switch}
               onPress={() => setIsLogin(!isLogin)}
               disabled={isLoading}
+              accessibilityRole="button"
             >
-              <Text style={[styles.switchButtonText, { color: Colors[colorScheme ?? 'light'].tint }]}>
+              {/* Inline text link — the one place the link blue is allowed. */}
+              <Text preset="bodyMd" color={color.link} align="center">
                 {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -216,93 +170,12 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  form: {
-    gap: 16,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  nameInput: {
-    flex: 1,
-    height: 56,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-  },
-  input: {
-    height: 56,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-  },
-  passwordContainer: {
-    position: 'relative',
-  },
-  passwordInput: {
-    height: 56,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingRight: 48,
-    fontSize: 16,
-  },
-  passwordToggle: {
-    position: 'absolute',
-    right: 16,
-    top: 18,
-  },
-  submitButton: {
-    height: 56,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  submitButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  switchButton: {
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  switchButtonText: {
-    fontSize: 16,
-  },
+  container: { flex: 1, backgroundColor: color.canvas },
+  flex: { flex: 1 },
+  content: { flex: 1, justifyContent: 'center', paddingHorizontal: space.lg },
+  header: { alignItems: 'center', marginBottom: space.xxl, gap: space.xs },
+  form: { gap: space.md },
+  nameRow: { flexDirection: 'row', gap: space.sm },
+  submit: { marginTop: space.xs },
+  switch: { alignItems: 'center', marginTop: space.xs },
 });

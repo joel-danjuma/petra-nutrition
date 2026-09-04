@@ -114,6 +114,33 @@ export class UserController {
     }
   }
 
+  async completeOnboarding(req: Request, res: Response) {
+    const userId = req.user!.id;
+    const { dietaryRestrictions, allergies, householdSize, cookingSkill } = req.body;
+
+    try {
+      const user = await this.userService.completeOnboarding(userId, {
+        dietaryRestrictions,
+        allergies,
+        householdSize,
+        cookingSkill,
+      });
+
+      const { passwordHash, passwordResetToken, passwordResetExpires, emailVerificationToken, ...safeUser } = user as any;
+
+      logger.info('User completed onboarding', { userId });
+
+      res.json({
+        success: true,
+        data: safeUser,
+        metadata: { timestamp: new Date().toISOString() },
+      });
+    } catch (error) {
+      logger.error('Failed to complete onboarding:', error);
+      throw error;
+    }
+  }
+
   async getStats(req: Request, res: Response) {
     const userId = req.user!.id;
 

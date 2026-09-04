@@ -1,0 +1,137 @@
+/* GENERATED FILE — DO NOT EDIT.
+ * Source: packages/shared/src/design/tokens.ts
+ * Regenerate: node scripts/gen-design-tokens.mjs
+ *
+ * Petra Nutrition Design System. White canvas, near-black ink, no dark mode.
+ */
+
+:root {
+  /* ---- design-system palette (hex, DS names) ---- */
+  --petra-ink: #181d26;
+  --petra-primary-active: #0d1218;
+  --petra-body: #333840;
+  --petra-muted: #41454d;
+  --petra-hairline: #dddddd;
+  --petra-border-strong: #9297a0;
+  --petra-white: #ffffff;
+  --petra-canvas: #ffffff;
+  --petra-surface-soft: #f8fafc;
+  --petra-surface-strong: #e0e2e6;
+  --petra-surface-dark: #181d26;
+  --petra-surface-dark-elevated: #1d1f25;
+  --petra-coral: #aa2d00;
+  --petra-forest: #0a2e0e;
+  --petra-cream: #f5e9d4;
+  --petra-peach: #fcab79;
+  --petra-mint: #a8d8c4;
+  --petra-yellow: #f4d35e;
+  --petra-mustard: #d9a441;
+  --petra-link: #1b61c9;
+  --petra-link-active: #1a3866;
+  --petra-info: #254fad;
+  --petra-info-border: #458fff;
+  --petra-success: #006400;
+  --petra-success-border: #39bf45;
+  --petra-pricing-ink: #1d1f25;
+
+  /* ---- semantic aliases ---- */
+  --color-primary: var(--petra-ink);
+  --color-primary-active: var(--petra-primary-active);
+  --color-on-primary: var(--petra-white);
+  --color-link: var(--petra-link);
+  --color-link-active: var(--petra-link-active);
+  --color-success: var(--petra-success);
+  --color-info: var(--petra-info);
+  --border-hairline: var(--petra-hairline);
+  --border-strong: var(--petra-border-strong);
+  --surface-canvas: var(--petra-canvas);
+  --surface-soft: var(--petra-surface-soft);
+  --surface-strong: var(--petra-surface-strong);
+  --surface-dark: var(--petra-surface-dark);
+  --surface-dark-elevated: var(--petra-surface-dark-elevated);
+  --signature-coral: var(--petra-coral);
+  --signature-forest: var(--petra-forest);
+  --signature-cream: var(--petra-cream);
+
+  /* ---- Tailwind roles (bare HSL triples for hsl(var(--x))) ---- */
+  --background: 0 0% 100%;
+  --foreground: 219 22.6% 12.2%;
+  --card: 0 0% 100%;
+  --card-foreground: 219 22.6% 12.2%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 219 22.6% 12.2%;
+  --primary: 219 22.6% 12.2%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 98%;
+  --secondary-foreground: 219 22.6% 12.2%;
+  --muted: 210 40% 98%;
+  --muted-foreground: 220 8.5% 27.8%;
+  --accent: 220 10.7% 89%;
+  --accent-foreground: 219 22.6% 12.2%;
+  --destructive: 16 100% 33.3%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 120 100% 19.6%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 62.3% 89.6%;
+  --warning-foreground: 219 22.6% 12.2%;
+  --border: 0 0% 86.7%;
+  --input: 0 0% 86.7%;
+  --ring: 216 100% 63.5%;
+
+  /* ---- spacing (4px base; 96px is the editorial band rhythm) ---- */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 96px;
+  --container-max: 1280px;
+  --container-pad: 48px;
+  --nav-height: 64px;
+  --rail-width: 240px;
+
+  /* ---- radius (pill is pricing-only) ---- */
+  --radius-xs: 2px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+  --radius-full: 9999px;
+  /* Tailwind's rounded-lg maps here: content-card radius */
+  --radius: 10px;
+
+  /* ---- typography: emphasis is size + colour, never bold ---- */
+  --text-display-xl: 48px;
+  --text-display-lg: 40px;
+  --text-display-md: 32px;
+  --text-title-lg: 24px;
+  --text-title-md: 20px;
+  --text-title-sm: 18px;
+  --text-label-md: 16px;
+  --text-button: 16px;
+  --text-body-md: 14px;
+  --text-caption: 14px;
+  --text-legal: 13.12px;
+  --text-pricing-display: 44.8px;
+  --text-pricing-section: 28px;
+  --text-pricing-card-title: 20px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 600;
+  --weight-pricing: 475;
+  --weight-pricing-strong: 575;
+  --lh-display: 1.1;
+  --lh-display-lg: 1.2;
+  --lh-title: 1.35;
+  --lh-title-md: 1.5;
+  --lh-tight: 1.2;
+  --lh-body: 1.25;
+  --lh-snug: 1.4;
+
+  /* ---- elevation: colour-block first. Cards are flat. ---- */
+  --shadow-button-rest: 0 1px 2px rgba(13, 18, 24, 0.16), 0 2px 6px rgba(27, 97, 201, 0.10);
+  --shadow-focus-ring: 0 0 0 3px rgba(69, 143, 255, 0.45);
+  --shadow-card: none;
+}

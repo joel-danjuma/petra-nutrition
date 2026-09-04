@@ -17,7 +17,7 @@ interface PantryActions {
   fetchStats: () => Promise<void>;
   addItem: (item: CreatePantryItem) => Promise<void>;
   updateItem: (id: string, updates: UpdatePantryItem) => Promise<void>;
-  deleteItem: (id: string) => Promise<void>;
+  deleteItem: (id: string, reason?: 'used' | 'wasted') => Promise<void>;
   bulkUpdate: (items: Array<{ id: string; updates: UpdatePantryItem }>) => Promise<void>;
   scanBarcode: (barcode: string) => Promise<any>;
   recognizeImage: (imageData: string) => Promise<any>;
@@ -157,16 +157,16 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     }
   },
 
-  deleteItem: async (id: string) => {
+  deleteItem: async (id: string, reason?: 'used' | 'wasted') => {
     set({ isLoading: true, error: null });
-    
+
     try {
       const api = (get() as any).api as PetraApiEndpoints;
       if (!api) {
         throw new Error('API client not initialized');
       }
 
-      const response = await api.pantry.delete(id);
+      const response = await api.pantry.delete(id, reason);
       
       if (response.success) {
         const { items, selectedItems } = get();

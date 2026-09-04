@@ -1,12 +1,14 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../constants/Colors';
-import { useColorScheme } from '../hooks/useColorScheme';
+import { StyleSheet, View } from 'react-native';
+import { enumEquals } from '@petra/shared';
+
+import { color, onDark, radius, space } from '../theme';
+import { Text } from './ui/Text';
 
 interface Message {
   id: string;
   content: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'USER' | 'ASSISTANT';
   timestamp: Date;
 }
 
@@ -14,45 +16,26 @@ interface ChatMessageProps {
   message: Message;
 }
 
+/**
+ * Chat bubbles. The user's turn is the near-black ink surface (it is the
+ * emphasised one), Petra's is the soft surface with a hairline. Both take the
+ * content-card radius rather than a rounded chat pill.
+ */
 export function ChatMessage({ message }: ChatMessageProps) {
-  const colorScheme = useColorScheme();
-  const isUser = message.role === 'user';
+  // Case-insensitive: locally built messages use 'user', but history loaded
+  // from the API comes back as 'USER'.
+  const isUser = enumEquals(message.role, 'user');
 
   return (
-    <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
-      <View
-        style={[
-          styles.bubble,
-          isUser ? styles.userBubble : styles.assistantBubble,
-          {
-            backgroundColor: isUser
-              ? Colors[colorScheme ?? 'light'].tint
-              : Colors[colorScheme ?? 'light'].card,
-            borderColor: Colors[colorScheme ?? 'light'].border,
-          },
-        ]}
-      >
-        <Text
-          style={[
-            styles.text,
-            {
-              color: isUser
-                ? 'white'
-                : Colors[colorScheme ?? 'light'].text,
-            },
-          ]}
-        >
+    <View style={[styles.container, isUser ? styles.alignEnd : styles.alignStart]}>
+      <View style={[styles.bubble, isUser ? styles.user : styles.assistant]}>
+        <Text preset="bodyMd" color={isUser ? color.white : color.ink}>
           {message.content}
         </Text>
         <Text
-          style={[
-            styles.timestamp,
-            {
-              color: isUser
-                ? 'rgba(255, 255, 255, 0.7)'
-                : Colors[colorScheme ?? 'light'].tabIconDefault,
-            },
-          ]}
+          preset="caption"
+          color={isUser ? onDark.textMuted : color.muted}
+          style={styles.timestamp}
         >
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
@@ -62,35 +45,21 @@ export function ChatMessage({ message }: ChatMessageProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginVertical: 4,
-  },
-  userContainer: {
-    alignItems: 'flex-end',
-  },
-  assistantContainer: {
-    alignItems: 'flex-start',
-  },
+  container: { marginVertical: space.xxs },
+  alignEnd: { alignItems: 'flex-end' },
+  alignStart: { alignItems: 'flex-start' },
   bubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 18,
+    maxWidth: '84%',
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.md,
+    gap: space.xxs,
+  },
+  user: { backgroundColor: color.ink },
+  assistant: {
+    backgroundColor: color.surfaceSoft,
     borderWidth: 1,
+    borderColor: color.hairline,
   },
-  userBubble: {
-    borderBottomRightRadius: 4,
-  },
-  assistantBubble: {
-    borderBottomLeftRadius: 4,
-  },
-  text: {
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  timestamp: {
-    fontSize: 12,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
+  timestamp: { alignSelf: 'flex-end' },
 });

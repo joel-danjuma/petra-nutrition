@@ -1,27 +1,37 @@
-import { useEffect } from 'react';
 import { Redirect } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useAuth } from '@petra/shared';
 
+import { color } from '../src/theme';
+import { LoadingSpinner } from '../src/components/ui/LoadingSpinner';
+
 export default function IndexScreen() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, hasHydrated } = useAuth();
 
-  useEffect(() => {
-    // Any initialization logic can go here
-  }, []);
-
-  if (isLoading) {
+  // Wait for the persisted session to load before deciding where to send the
+  // user — otherwise a signed-in user gets bounced to /auth on every launch.
+  if (!hasHydrated || isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#22c55e" />
+      <View style={styles.container}>
+        <LoadingSpinner size="large" />
       </View>
     );
   }
 
-  // Redirect based on authentication status
   if (isAuthenticated) {
+    if (!user?.profile?.onboardingCompletedAt) {
+      return <Redirect href="/onboarding" />;
+    }
     return <Redirect href="/(tabs)" />;
-  } else {
-    return <Redirect href="/auth" />;
   }
+  return <Redirect href="/auth" />;
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: color.canvas,
+  },
+});

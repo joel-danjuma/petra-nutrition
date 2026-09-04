@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ActivityLevelSchema, CookingSkillSchema, HealthGoalSchema, SubscriptionTierSchema } from './enums';
 
 export const UserSchema = z.object({
   id: z.string().uuid(),
@@ -6,16 +7,24 @@ export const UserSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   isEmailVerified: z.boolean().default(false),
-  subscriptionTier: z.enum(['free', 'premium']).default('free'),
+  subscriptionTier: SubscriptionTierSchema.default('FREE'),
   profile: z.object({
     age: z.number().optional(),
     height: z.number().optional(), // in cm
     weight: z.number().optional(), // in kg
-    activityLevel: z.enum(['sedentary', 'lightly_active', 'moderately_active', 'very_active', 'extremely_active']).optional(),
+    activityLevel: ActivityLevelSchema.optional(),
     dietaryRestrictions: z.array(z.string()).default([]),
     allergies: z.array(z.string()).default([]),
-    healthGoals: z.array(z.enum(['weight_loss', 'weight_gain', 'muscle_gain', 'maintenance', 'heart_health', 'diabetes_management'])).default([]),
+    healthGoals: z.array(HealthGoalSchema).default([]),
     cuisinePreferences: z.array(z.string()).default([]),
+    householdSize: z.number().int().min(1).optional(),
+    cookingSkill: CookingSkillSchema.optional(),
+    onboardingCompletedAt: z.date().optional(),
+    dailyCalorieTarget: z.number().optional(),
+    dailyProteinTarget: z.number().optional(), // in grams
+    dailyFiberTarget: z.number().optional(), // in grams
+    dailySodiumTarget: z.number().optional(), // in mg
+    dailyVegServings: z.number().optional(),
   }).optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -50,12 +59,20 @@ export const PasswordResetConfirmSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+export const CompleteOnboardingSchema = z.object({
+  dietaryRestrictions: z.array(z.string()).default([]),
+  allergies: z.array(z.string()).default([]),
+  householdSize: z.number().int().min(1).optional(),
+  cookingSkill: CookingSkillSchema.optional(),
+});
+
 export type User = z.infer<typeof UserSchema>;
 export type CreateUser = z.infer<typeof CreateUserSchema>;
 export type UpdateUser = z.infer<typeof UpdateUserSchema>;
 export type Login = z.infer<typeof LoginSchema>;
 export type PasswordReset = z.infer<typeof PasswordResetSchema>;
 export type PasswordResetConfirm = z.infer<typeof PasswordResetConfirmSchema>;
+export type CompleteOnboarding = z.infer<typeof CompleteOnboardingSchema>;
 
 export interface AuthResponse {
   user: User;

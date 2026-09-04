@@ -139,8 +139,8 @@ export default function PantryPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pantry</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{items.length} items tracked</p>
+          <h1 className="text-2xl font-medium text-foreground">Pantry</h1>
+          <p className="text-muted-foreground text-sm mt-1">{items.length} items tracked</p>
         </div>
         <Button onClick={openAdd} className="gap-2">
           <Plus className="h-4 w-4" />
@@ -150,13 +150,13 @@ export default function PantryPage() {
 
       {/* Search */}
       <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search pantry..."
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+          className="w-full pl-10 pr-4 py-2.5 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-transparent text-sm"
         />
       </div>
 
@@ -168,8 +168,8 @@ export default function PantryPage() {
             onClick={() => setActiveCategory(cat)}
             className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               activeCategory === cat
-                ? 'bg-green-600 text-white'
-                : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-green-400'
+                ? 'bg-primary text-white'
+                : 'bg-background text-muted-foreground border border-border active:border-border'
             }`}
           >
             {cat.charAt(0) + cat.slice(1).replace(/_/g, ' ').toLowerCase()}
@@ -180,12 +180,12 @@ export default function PantryPage() {
       {/* Items */}
       {isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-24">
-          <Package className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500 dark:text-gray-400">
+          <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">
             {query ? 'No items match your search' : 'Your pantry is empty — start adding items!'}
           </p>
           <Button onClick={openAdd} className="mt-4 gap-2">
@@ -201,44 +201,44 @@ export default function PantryPage() {
             return (
               <div
                 key={item.id}
-                className={`bg-white dark:bg-gray-900 rounded-xl border p-4 ${
+                className={`bg-background rounded-xl border p-4 ${
                   expired
-                    ? 'border-red-200 dark:border-red-800'
+                    ? 'border-border'
                     : expiringSoon
-                    ? 'border-amber-200 dark:border-amber-800'
-                    : 'border-gray-200 dark:border-gray-800'
+                    ? 'border-border'
+                    : 'border-border'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-gray-900 dark:text-white text-sm truncate">{item.name}</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <h3 className="font-medium text-foreground text-sm truncate">{item.name}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {item.quantity} {item.unit} · {item.location}
                     </p>
                     {item.brand && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500">{item.brand}</p>
+                      <p className="text-xs text-muted-foreground">{item.brand}</p>
                     )}
                     {(expired || expiringSoon) && (
-                      <div className={`flex items-center gap-1 mt-1 text-xs ${expired ? 'text-red-500' : 'text-amber-500'}`}>
+                      <div className={`flex items-center gap-1 mt-1 text-xs ${expired ? 'text-destructive' : 'text-foreground'}`}>
                         <AlertTriangle className="h-3 w-3" />
                         {expired ? 'Expired' : 'Expiring soon'}
                       </div>
                     )}
                     {item.isLowStock && (
-                      <p className="text-xs text-orange-500 mt-0.5">Low stock</p>
+                      <p className="text-xs text-foreground mt-0.5">Low stock</p>
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => openEdit(item)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                    <button onClick={() => openEdit(item)} className="p-1.5 text-muted-foreground active:text-foreground rounded-lg active:bg-secondary transition-colors">
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => deleteItem(item.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <button onClick={() => deleteItem(item.id)} className="p-1.5 text-muted-foreground active:text-destructive rounded-lg active:bg-secondary transition-colors">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
                 {item.expirationDate && !expired && !expiringSoon && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     Expires {new Date(item.expirationDate).toLocaleDateString()}
                   </p>
                 )}
@@ -251,8 +251,8 @@ export default function PantryPage() {
       {/* Add/Edit Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+          <div className="bg-background rounded-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-medium text-foreground mb-4">
               {editItem ? 'Edit Item' : 'Add Pantry Item'}
             </h2>
             <div className="space-y-3">
@@ -261,7 +261,7 @@ export default function PantryPage() {
                 placeholder="Item name *"
                 value={formData.name}
                 onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-transparent"
               />
               <div className="grid grid-cols-2 gap-3">
                 <input
@@ -271,27 +271,27 @@ export default function PantryPage() {
                   step="0.1"
                   value={formData.quantity}
                   onChange={e => setFormData(p => ({ ...p, quantity: parseFloat(e.target.value) }))}
-                  className="px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-transparent"
                 />
                 <input
                   type="text"
                   placeholder="Unit (e.g. kg, pcs)"
                   value={formData.unit}
                   onChange={e => setFormData(p => ({ ...p, unit: e.target.value }))}
-                  className="px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring focus:border-transparent"
                 />
               </div>
               <select
                 value={formData.category}
                 onChange={e => setFormData(p => ({ ...p, category: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
               >
                 {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
               </select>
               <select
                 value={formData.location}
                 onChange={e => setFormData(p => ({ ...p, location: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
               >
                 {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
@@ -300,14 +300,14 @@ export default function PantryPage() {
                 placeholder="Expiration date"
                 value={formData.expirationDate}
                 onChange={e => setFormData(p => ({ ...p, expirationDate: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
               />
               <input
                 type="text"
                 placeholder="Brand (optional)"
                 value={formData.brand}
                 onChange={e => setFormData(p => ({ ...p, brand: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2.5 border border-border rounded-lg bg-secondary text-foreground text-sm focus:ring-2 focus:ring-ring"
               />
             </div>
             <div className="flex gap-3 mt-5">

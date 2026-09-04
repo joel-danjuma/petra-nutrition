@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import { prisma } from '../database';
 import { ChatService } from '../services/chat';
+import { AnalyticsService } from '../services/analytics';
 import { logger } from '../utils/logger';
 
 export class AnalyticsController {
   private chatService: ChatService;
+  private analyticsService: AnalyticsService;
 
   constructor() {
     this.chatService = new ChatService();
+    this.analyticsService = new AnalyticsService();
   }
 
   async getUserStats(req: Request, res: Response) {
@@ -161,6 +164,74 @@ export class AnalyticsController {
       });
     } catch (error) {
       logger.error('Failed to get pantry analytics:', error);
+      throw error;
+    }
+  }
+
+  async logWaste(req: Request, res: Response) {
+    const userId = req.user!.id;
+
+    try {
+      await this.analyticsService.logWaste(userId, req.body);
+
+      res.status(201).json({
+        success: true,
+        data: { message: 'Waste event logged' },
+        metadata: { timestamp: new Date().toISOString() },
+      });
+    } catch (error) {
+      logger.error('Failed to log waste event:', error);
+      throw error;
+    }
+  }
+
+  async getWasteSummary(req: Request, res: Response) {
+    const userId = req.user!.id;
+
+    try {
+      const summary = await this.analyticsService.getWasteSummary(userId);
+
+      res.json({
+        success: true,
+        data: summary,
+        metadata: { timestamp: new Date().toISOString() },
+      });
+    } catch (error) {
+      logger.error('Failed to get waste summary:', error);
+      throw error;
+    }
+  }
+
+  async logMealCompletion(req: Request, res: Response) {
+    const userId = req.user!.id;
+
+    try {
+      await this.analyticsService.logMealCompletion(userId, req.body);
+
+      res.status(201).json({
+        success: true,
+        data: { message: 'Meal completion logged' },
+        metadata: { timestamp: new Date().toISOString() },
+      });
+    } catch (error) {
+      logger.error('Failed to log meal completion:', error);
+      throw error;
+    }
+  }
+
+  async getTodayNutrition(req: Request, res: Response) {
+    const userId = req.user!.id;
+
+    try {
+      const nutrition = await this.analyticsService.getTodayNutrition(userId);
+
+      res.json({
+        success: true,
+        data: nutrition,
+        metadata: { timestamp: new Date().toISOString() },
+      });
+    } catch (error) {
+      logger.error('Failed to get today nutrition:', error);
       throw error;
     }
   }

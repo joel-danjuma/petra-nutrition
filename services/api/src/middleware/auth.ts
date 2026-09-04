@@ -15,16 +15,18 @@ interface JWTPayload {
 
 // Authentication middleware
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  // Skip auth for public routes
+  // Skip auth for public routes. Note: this middleware is mounted at
+  // `app.use('/api', authMiddleware)`, so Express strips the `/api` prefix
+  // from `req.path` here — these entries must be relative to that mount.
   const publicRoutes = [
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/auth/refresh',
-    '/api/auth/password-reset',
-    '/api/auth/password-reset/confirm',
-    '/api/auth/verify-email',
-    '/api/recipes/search', // Public recipe search
-    '/api/health',
+    '/auth/login',
+    '/auth/register',
+    '/auth/refresh',
+    '/auth/password-reset',
+    '/auth/password-reset/confirm',
+    '/auth/verify-email',
+    '/recipes/search', // Public recipe search
+    '/health',
   ];
 
   const isPublicRoute = publicRoutes.some(route => 

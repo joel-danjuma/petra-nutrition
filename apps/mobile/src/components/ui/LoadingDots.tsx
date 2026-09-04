@@ -1,16 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/Colors';
-import { useColorScheme } from '../../hooks/useColorScheme';
+import { color as tokens, space } from '../../theme';
 
 interface LoadingDotsProps {
   color?: string;
   size?: number;
 }
 
-export function LoadingDots({ color, size = 8 }: LoadingDotsProps) {
-  const colorScheme = useColorScheme();
-  const defaultColor = color || Colors[colorScheme ?? 'light'].tabIconDefault;
+export function LoadingDots({ color, size = space.xs }: LoadingDotsProps) {
+  const defaultColor = color || tokens.muted;
 
   const animatedValues = useRef([
     new Animated.Value(0.3),
@@ -70,9 +68,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: space.xxs,
   },
   dot: {
-    marginHorizontal: 2,
+    marginHorizontal: space.xxs / 2,
   },
 });

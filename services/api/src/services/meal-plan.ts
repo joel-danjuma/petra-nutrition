@@ -5,12 +5,15 @@ export class MealPlanService {
   async getMealPlans(userId: string, filters: any = {}) {
     const {
       query,
-      page = 1,
-      limit = 20,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = filters;
 
+    // These arrive straight off `req.query`, so they are strings. Passing them
+    // through unconverted made Prisma reject `take: "1"` — which meant any
+    // request with a `limit` (including Today's `?limit=1`) returned a 500.
+    const page = Math.max(1, Number(filters.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit) || 20));
     const offset = (page - 1) * limit;
     const where: any = { userId, isTemplate: false };
 
@@ -29,7 +32,20 @@ export class MealPlanService {
             meals: {
               include: {
                 recipe: {
-                  select: { id: true, title: true, imageUrl: true, prepTime: true, cookTime: true },
+                  // Enough to render a recipe card without a second request —
+                  // Today's hero and the plan's meal cards both need imagery,
+                  // servings and macros, not just a title and a duration.
+                  select: {
+                    id: true,
+                    title: true,
+                    imageUrl: true,
+                    prepTime: true,
+                    cookTime: true,
+                    totalTime: true,
+                    servings: true,
+                    dietaryTags: true,
+                    nutrition: { select: { calories: true, protein: true } },
+                  },
                 },
               },
               orderBy: [{ date: 'asc' }, { mealType: 'asc' }],

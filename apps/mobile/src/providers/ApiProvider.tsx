@@ -1,49 +1,36 @@
-import React, { ReactNode, useEffect } from 'react';
-import { ApiClient, StoreProvider, initializeStores } from '@petra/shared';
-import { Platform } from 'react-native';
+import React, { ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  ApiClient,
+  StoreProvider,
+  configureAuthStorage,
+  initializeStores,
+} from '@petra/shared';
+import { API_URL } from '../config/api';
+
+// Created once at module load, never per-render: a fresh ApiClient on every
+// render would hand the store a new, token-less client and silently drop the
+// user's session at the HTTP layer.
+const apiClient = new ApiClient({
+  baseURL: API_URL,
+  timeout: 30000,
+  onTokenExpired: () => {
+    console.log('Token expired - user needs to re-authenticate');
+  },
+  onUnauthorized: () => {
+    console.log('Unauthorized access - redirecting to login');
+  },
+});
+
+// Inject the API into the store before anything renders, then point auth
+// persistence at AsyncStorage and load any saved session.
+initializeStores(apiClient);
+configureAuthStorage(AsyncStorage);
 
 interface ApiProviderProps {
   children: ReactNode;
 }
 
 export function ApiProvider({ children }: ApiProviderProps) {
-  // Use different base URLs for different platforms
-  const getApiUrl = () => {
-    if (__DEV__) {
-      // Development URLs
-      if (Platform.OS === 'ios') {
-        return 'http://localhost:3001/api';
-      } else if (Platform.OS === 'android') {
-        return 'http://10.0.2.2:3001/api'; // Android emulator
-      }
-      return 'http://localhost:3001/api';
-    }
-    
-    // Production URL
-    return 'https://api.petra-ai.com/api';
-  };
-
-  const apiClient = new ApiClient({
-    baseURL: getApiUrl(),
-    timeout: 30000,
-    onTokenExpired: () => {
-      // Handle token expiration - could show a modal or redirect to login
-      console.log('Token expired - user needs to re-authenticate');
-    },
-    onUnauthorized: () => {
-      // Handle unauthorized access
-      console.log('Unauthorized access - redirecting to login');
-    },
-  });
-
-  useEffect(() => {
-    // Initialize stores with API client
-    initializeStores(apiClient);
-  }, [apiClient]);
-
-  return (
-    <StoreProvider apiClient={apiClient}>
-      {children}
-    </StoreProvider>
-  );
+  return <StoreProvider apiClient={apiClient}>{children}</StoreProvider>;
 }

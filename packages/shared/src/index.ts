@@ -1,3 +1,6 @@
+// Design tokens (Petra Nutrition Design System)
+export * from './design';
+
 // Types
 export * from './types';
 

@@ -1,28 +1,27 @@
 import React from 'react';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/Colors';
-import { useColorScheme } from '../../hooks/useColorScheme';
+import { ActivityIndicator, StyleSheet, View, ViewStyle } from 'react-native';
+
+import { color } from '../../theme';
 
 interface LoadingSpinnerProps {
   size?: 'small' | 'large';
+  /** Override for dark surfaces (Cook Mode, Scan). */
   color?: string;
-  style?: any;
+  style?: ViewStyle;
 }
 
-export function LoadingSpinner({ size = 'small', color, style }: LoadingSpinnerProps) {
-  const colorScheme = useColorScheme();
-  const defaultColor = color || Colors[colorScheme ?? 'light'].tint;
-
+export function LoadingSpinner({
+  size = 'small',
+  color: tint = color.ink,
+  style,
+}: LoadingSpinnerProps) {
   return (
     <View style={[styles.container, style]}>
-      <ActivityIndicator size={size} color={defaultColor} />
+      <ActivityIndicator size={size} color={tint} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { justifyContent: 'center', alignItems: 'center' },
 });

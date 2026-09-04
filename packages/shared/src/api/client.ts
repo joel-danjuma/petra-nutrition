@@ -1,6 +1,12 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ApiResponse, ApiError, ApiErrorCode, HttpStatusCode } from '../types/api';
 
+declare module 'axios' {
+  interface InternalAxiosRequestConfig {
+    metadata?: { startTime: number };
+  }
+}
+
 export interface ApiClientConfig {
   baseURL: string;
   timeout?: number;
@@ -12,6 +18,10 @@ export interface ApiClientConfig {
 export class ApiClient {
   private instance: AxiosInstance;
   private config: ApiClientConfig;
+  // In-memory only, and deliberately so: persistence belongs to the auth store,
+  // which mirrors its token here via `initializeStores`. Reaching for platform
+  // globals like `localStorage` from shared code is what crashed the native app.
+  private authToken: string | null = null;
 
   constructor(config: ApiClientConfig) {
     this.config = config;
@@ -84,14 +94,7 @@ export class ApiClient {
   }
 
   private getAuthToken(): string | null {
-    // Platform-specific token retrieval
-    if (typeof window !== 'undefined') {
-      // Web: token might be in localStorage or handled by cookies
-      return localStorage.getItem('auth_token');
-    } else {
-      // Node.js/React Native: implement platform-specific storage
-      return null;
-    }
+    return this.authToken;
   }
 
   private transformError(error: any): ApiError {
@@ -213,13 +216,7 @@ export class ApiClient {
 
   // Update auth token
   setAuthToken(token: string | null) {
-    if (typeof window !== 'undefined') {
-      if (token) {
-        localStorage.setItem('auth_token', token);
-      } else {
-        localStorage.removeItem('auth_token');
-      }
-    }
+    this.authToken = token;
   }
 
   // Update base URL (useful for switching environments)

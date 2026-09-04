@@ -10,6 +10,10 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  // False until the persisted state has been read back from storage. Consumers
+  // must wait for this before deciding whether the user is logged out, or they
+  // will race an async rehydrate and bounce a signed-in user to the login screen.
+  hasHydrated: boolean;
 }
 
 interface AuthActions {
@@ -24,28 +28,37 @@ interface AuthActions {
 
 type AuthStore = AuthState & AuthActions;
 
-// Platform-specific storage
-const getStorage = () => {
-  if (typeof window !== 'undefined') {
-    // Web
-    return createJSONStorage(() => localStorage);
-  } else {
-    // React Native - implement AsyncStorage
-    return createJSONStorage(() => ({
-      getItem: (key: string) => {
-        // Implement AsyncStorage.getItem
-        return Promise.resolve(null);
-      },
-      setItem: (key: string, value: string) => {
-        // Implement AsyncStorage.setItem
-        return Promise.resolve();
-      },
-      removeItem: (key: string) => {
-        // Implement AsyncStorage.removeItem
-        return Promise.resolve();
-      },
-    }));
-  }
+// Shared code never guesses which platform it is running on — sniffing globals
+// like `window`/`localStorage` is what previously crashed the native app at
+// boot (React Native's JS engine defines `window`, but not `localStorage`).
+// Instead the store starts with an inert engine that is safe everywhere, and
+// each app injects a real one via `configureAuthStorage` (web: `localStorage`,
+// mobile: AsyncStorage).
+const noopStorage = {
+  getItem: () => Promise.resolve(null),
+  setItem: () => Promise.resolve(),
+  removeItem: () => Promise.resolve(),
+};
+
+/**
+ * Storage engine accepted by `configureAuthStorage`. Matches both the
+ * synchronous web `Storage` API and AsyncStorage's promise-based one.
+ */
+export interface AuthStorageEngine {
+  getItem: (name: string) => string | null | Promise<string | null>;
+  setItem: (name: string, value: string) => unknown | Promise<unknown>;
+  removeItem: (name: string) => unknown | Promise<unknown>;
+}
+
+/**
+ * Point the auth store at a real storage engine and load any persisted session.
+ * Call this once, at module scope, before the app renders.
+ */
+export const configureAuthStorage = (storage: AuthStorageEngine) => {
+  useAuthStore.persist.setOptions({
+    storage: createJSONStorage(() => storage),
+  });
+  return useAuthStore.persist.rehydrate();
 };
 
 export const useAuthStore = create<AuthStore>()(
@@ -58,6 +71,7 @@ export const useAuthStore = create<AuthStore>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      hasHydrated: false,
 
       // Actions
       login: async (credentials: Login) => {
@@ -233,13 +247,23 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'auth-storage',
-      storage: getStorage(),
+      storage: createJSONStorage(() => noopStorage),
+      // Nothing is read until `configureAuthStorage` installs a real engine.
+      // Without this, the store would hydrate from `noopStorage` at creation,
+      // flip `hasHydrated` to true against empty state, and let the app decide
+      // "logged out" while the real read was still in flight.
+      skipHydration: true,
       partialize: (state) => ({
         user: state.user,
         token: state.token,
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      // Runs after rehydration whether it succeeded or failed — either way the
+      // app now knows the real answer and can stop showing its boot spinner.
+      onRehydrateStorage: () => () => {
+        useAuthStore.setState({ hasHydrated: true });
+      },
     }
   )
 );
@@ -251,6 +275,7 @@ export const useAuth = () => {
     user: store.user,
     isAuthenticated: store.isAuthenticated,
     isLoading: store.isLoading,
+    hasHydrated: store.hasHydrated,
     error: store.error,
     login: store.login,
     register: store.register,

@@ -1,79 +1,72 @@
 import React from 'react';
-import {
-  TouchableOpacity,
-  StyleSheet,
-  ViewStyle,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Colors } from '../constants/Colors';
-import { useColorScheme } from '../hooks/useColorScheme';
+import { Plus } from 'lucide-react-native';
+
+import { color, radius, shadow, space } from '../theme';
 
 interface FloatingActionButtonProps {
   onPress: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
-  size?: number;
+  icon?: React.ReactNode;
+  label?: string;
   style?: ViewStyle;
   disabled?: boolean;
 }
 
+/**
+ * The pantry's floating Scan action.
+ *
+ * Carries the primary CTA's rest shadow — the only shadow the system defines —
+ * rather than the heavy drop it used to have. It is a primary action, so it
+ * takes the near-black surface and darkens on press.
+ */
 export function FloatingActionButton({
   onPress,
-  icon = 'add',
-  size = 24,
+  icon,
+  label,
   style,
   disabled = false,
 }: FloatingActionButtonProps) {
-  const colorScheme = useColorScheme();
-
   const handlePress = () => {
-    if (!disabled) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      onPress();
-    }
+    if (disabled) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onPress();
   };
 
   return (
-    <TouchableOpacity
-      style={[
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label ?? 'Add'}
+      accessibilityState={{ disabled }}
+      onPress={handlePress}
+      disabled={disabled}
+      style={({ pressed }) => [
         styles.container,
         {
-          backgroundColor: disabled 
-            ? Colors[colorScheme ?? 'light'].tabIconDefault 
-            : Colors[colorScheme ?? 'light'].tint,
+          backgroundColor: disabled
+            ? color.borderStrong
+            : pressed
+              ? color.primaryActive
+              : color.ink,
         },
+        shadow.buttonRest,
         style,
       ]}
-      onPress={handlePress}
-      activeOpacity={0.8}
-      disabled={disabled}
     >
-      <Ionicons
-        name={icon}
-        size={size}
-        color="white"
-      />
-    </TouchableOpacity>
+      {icon ?? <Plus size={22} color={color.white} strokeWidth={1.85} />}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 30,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: space.lg,
+    right: space.lg,
+    width: space.xxl,
+    height: space.xxl,
+    borderRadius: radius.full,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
   },
 });

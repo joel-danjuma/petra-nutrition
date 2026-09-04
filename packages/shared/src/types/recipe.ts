@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DifficultySchema } from './enums';
 
 export const NutritionSchema = z.object({
   calories: z.number().min(0),
@@ -33,7 +34,7 @@ export const RecipeSchema = z.object({
   prepTime: z.number().min(0), // in minutes
   cookTime: z.number().min(0), // in minutes
   totalTime: z.number().min(0), // in minutes
-  difficulty: z.enum(['easy', 'medium', 'hard']),
+  difficulty: DifficultySchema,
   cuisine: z.string().optional(),
   dietaryTags: z.array(z.string()).default([]), // e.g., "vegetarian", "gluten-free", "keto"
   ingredients: z.array(IngredientSchema),
@@ -68,7 +69,7 @@ export const RecipeSearchSchema = z.object({
   dietaryTags: z.array(z.string()).optional(),
   maxPrepTime: z.number().optional(),
   maxCookTime: z.number().optional(),
-  difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  difficulty: DifficultySchema.optional(),
   ingredients: z.array(z.string()).optional(), // search by available ingredients
   minRating: z.number().min(0).max(5).optional(),
   limit: z.number().min(1).max(50).default(20),
@@ -82,7 +83,7 @@ export const RecipeGenerationRequestSchema = z.object({
   servings: z.number().min(1).optional(),
   maxPrepTime: z.number().optional(),
   cuisine: z.string().optional(),
-  difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  difficulty: DifficultySchema.optional(),
 });
 
 export type Nutrition = z.infer<typeof NutritionSchema>;
