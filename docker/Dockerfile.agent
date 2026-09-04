@@ -1,0 +1,61 @@
+# Petra agent service.
+#
+# Chat orchestration, hybrid recipe retrieval, the local embedding model and
+# vision. This is the only image that carries GROQ_API_KEY and GEMINI_API_KEY,
+# and it is never published through the reverse proxy.
+FROM node:18-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+# ---------------------------------------------------------------- deps
+FROM base AS deps
+# libc6-compat for Prisma's engines; vips for sharp's image preprocessing.
+RUN apk add --no-cache libc6-compat vips-dev
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/service-kit/package.json ./packages/service-kit/
+COPY packages/agent-contract/package.json ./packages/agent-contract/
+COPY services/agent/package.json ./services/agent/
+
+RUN pnpm install --frozen-lockfile --filter @petra/agent...
+
+# --------------------------------------------------------------- build
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages ./packages
+COPY --from=deps /app/services ./services
+COPY . .
+
+# Regenerates the read model from the API's schema and fails the build if the
+# committed projection is stale — the same drift gate CI runs.
+RUN pnpm --filter @petra/agent run sync-schema:check
+RUN pnpm --filter @petra/agent run db:generate
+RUN pnpm --filter @petra/agent exec tsc
+
+# -------------------------------------------------------------- runner
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+# A named volume mounts here, so the ~90MB MiniLM download survives restarts
+# instead of being refetched every time the container comes up.
+ENV TRANSFORMERS_CACHE=/app/.model-cache
+
+RUN apk add --no-cache vips
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nodejs
+
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/packages ./packages
+COPY --from=builder --chown=nodejs:nodejs /app/services/agent/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/services/agent/package.json ./package.json
+COPY --from=builder --chown=nodejs:nodejs /app/services/agent/src/generated ./dist/generated
+
+RUN mkdir -p .model-cache logs && chown -R nodejs:nodejs .model-cache logs
+USER nodejs
+
+EXPOSE 3002
+# start-period is generous: the first boot may download the embedding model.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+  CMD wget -qO- http://localhost:3002/health || exit 1
+
+CMD ["node", "dist/index.js"]

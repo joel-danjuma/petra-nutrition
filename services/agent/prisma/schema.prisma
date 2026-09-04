@@ -1,0 +1,126 @@
+// ------------------------------------------------------------------
+// GENERATED FILE — DO NOT EDIT.
+//
+// A projection of services/api/prisma/schema.prisma, limited to the models the
+// agent reads. Regenerate with:
+//
+//     pnpm --filter @petra/agent run sync-schema
+//
+// The API owns every migration. This schema declares none and must never be
+// used with `prisma migrate`; `prisma generate` only.
+//
+// Models: Recipe, RecipeIngredient, RecipeInstruction, RecipeEmbedding
+// ------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+  // Generated into the agent's own tree rather than node_modules/.prisma/client:
+  // the workspace hoists dependencies (shamefullyHoist), so two Prisma clients
+  // sharing the default output path would overwrite each other.
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model Recipe {
+  id            String     @id @default(uuid())
+  title         String
+  description   String?
+  imageUrl      String?
+  servings      Int
+  prepTime      Int // in minutes
+  cookTime      Int // in minutes
+  totalTime     Int // in minutes
+  difficulty    Difficulty
+  cuisine       String?
+  /// Course, not diet: Dessert, Breakfast, Starter, Side, Chicken, Seafood…
+  /// Needed so a planner doesn't put brownies in a dinner slot.
+  mealCategory  String?
+  dietaryTags   String[]   @default([])
+  rating        Float?     @default(0)
+  reviewCount   Int        @default(0)
+  createdById   String?
+  isAIGenerated Boolean    @default(false)
+  source        String?
+  isPublic      Boolean    @default(true)
+
+  /// Food-safety guidance surfaced as the "Cook it safe" callout — probe
+  /// temperatures, raw-protein handling, allergen cross-contact.
+  safetyNote    String?
+  /// How to use the whole ingredient and what to do with the leftovers.
+  /// Surfaced as the "Nothing gets binned" callout.
+  zeroWasteNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  // createdBy: relation to User, omitted — not part of the agent's read model
+  ingredients     RecipeIngredient[]
+  instructions    RecipeInstruction[]
+  // nutrition: relation to RecipeNutrition, omitted — not part of the agent's read model
+  embedding       RecipeEmbedding?
+  // favorites: relation to UserFavorite, omitted — not part of the agent's read model
+  // ratings: relation to UserRating, omitted — not part of the agent's read model
+  // mealPlanMeals: relation to MealPlanMeal, omitted — not part of the agent's read model
+  // mealCompletions: relation to MealCompletion, omitted — not part of the agent's read model
+
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id       String  @id @default(uuid())
+  recipeId String
+  name     String
+  amount   Float
+  unit     String
+  notes    String?
+  order    Int
+
+  // Relations
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId])
+  @@map("recipe_ingredients")
+}
+
+model RecipeInstruction {
+  id          String  @id @default(uuid())
+  recipeId    String
+  step        Int
+  instruction String
+  duration    Int? // in minutes
+  /// Optional aside shown beside this step in Cook Mode — the technique note
+  /// or safety check a good cook would say out loud at this point.
+  tip         String?
+
+  // Relations
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId])
+  @@map("recipe_instructions")
+}
+
+model RecipeEmbedding {
+  id        String   @id @default(uuid())
+  recipeId  String   @unique
+  vector    Float[]
+  /// Which model produced this vector — vectors from different models are not
+  /// comparable, so a model change must invalidate the whole table.
+  model     String
+  updatedAt DateTime @updatedAt
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_embeddings")
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}

@@ -1,9 +1,21 @@
 packages:
   - 'packages/*'
+  - 'services/*'
+  - 'apps/*'
+# React Native / Expo's tooling (Metro, various native module packages)
+# assumes a flat, npm/yarn-style node_modules tree and doesn't reliably
+# resolve pnpm's strict, symlinked dependency isolation. Hoisting
+# everything to the root node_modules is the standard workaround.
+# See: https://docs.expo.dev/guides/monorepos/
+shamefullyHoist: true
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   esbuild: true
   prisma: true
+  # protobufjs ships a postinstall that regenerates its descriptors; nothing
+  # here imports it directly (it arrives under the Expo toolchain) so it does
+  # not need to run.
+  protobufjs: false
   sharp: true
   unrs-resolver: true

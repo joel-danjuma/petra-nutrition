@@ -41,12 +41,12 @@ services:
       timeout: 10s
       retries: 3
 
-  # Backend API
-  backend:
+  # API gateway. Public. Owns auth, persistence and every migration.
+  api:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.backend
-    container_name: petra-backend
+      dockerfile: docker/Dockerfile.api
+    container_name: petra-api
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -54,8 +54,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      GROQ_API_KEY: ${GROQ_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # No GROQ_API_KEY or GEMINI_API_KEY here — the process that hashes
+      # passwords and signs tokens no longer holds model provider credentials.
+      AGENT_URL: http://agent:3002
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
@@ -71,15 +73,54 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      agent:
+        condition: service_healthy
     networks:
       - petra-network
     volumes:
-      - backend_uploads:/app/uploads
-      - backend_logs:/app/logs
+      - api_uploads:/app/uploads
+      - api_logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
+      retries: 3
+
+  # Agent service. Deliberately has NO `ports:` block — it is reachable only
+  # from other containers on petra-network, and nginx does not route to it.
+  # Its only authentication is INTERNAL_API_KEY, which is why it must not be
+  # published.
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent
+    container_name: petra-agent
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      AGENT_PORT: 3002
+      # Should be a role with SELECT on the recipe tables and DML on
+      # recipe_embeddings only. The agent owns its index and nothing else.
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/petra_ai}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_MODEL_FAST: ${GROQ_MODEL_FAST:-openai/gpt-oss-20b}
+      GROQ_MODEL_SMART: ${GROQ_MODEL_SMART:-openai/gpt-oss-120b}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - petra-network
+    volumes:
+      # Keeps the ~90MB embedding model across restarts.
+      - agent_model_cache:/app/.model-cache
+      - agent_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
       retries: 3
 
   # Web Frontend
@@ -96,12 +137,12 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      backend:
+      api:
         condition: service_healthy
     networks:
       - petra-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -120,7 +161,7 @@ services:
       - nginx_logs:/var/log/nginx
     depends_on:
       - web
-      - backend
+      - api
     networks:
       - petra-network
     healthcheck:
@@ -134,9 +175,13 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  backend_uploads:
+  api_uploads:
     driver: local
-  backend_logs:
+  api_logs:
+    driver: local
+  agent_model_cache:
+    driver: local
+  agent_logs:
     driver: local
   nginx_logs:
     driver: local

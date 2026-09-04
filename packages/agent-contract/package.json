@@ -1,0 +1,19 @@
+{
+  "name": "@petra/agent-contract",
+  "version": "1.0.0",
+  "description": "Wire contract between the Petra API gateway and the agent service",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.0",
+    "typescript": "^5.1.6"
+  }
+}

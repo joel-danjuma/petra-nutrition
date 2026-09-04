@@ -2,7 +2,6 @@ import axios from 'axios';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import sharp from 'sharp';
-import fs from 'fs/promises';
 
 export interface RecognitionResult {
   name: string;

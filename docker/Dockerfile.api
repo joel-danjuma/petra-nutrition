@@ -1,0 +1,55 @@
+# Petra API gateway.
+#
+# Owns authentication, all persistence and every Prisma migration. It holds no
+# model provider keys — those live in the agent image.
+FROM node:18-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+# ---------------------------------------------------------------- deps
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Only the manifests, so a source change doesn't invalidate the install layer.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/service-kit/package.json ./packages/service-kit/
+COPY packages/agent-contract/package.json ./packages/agent-contract/
+COPY services/api/package.json ./services/api/
+
+# `pnpm install`, not `npm ci`: this repo has no package-lock.json, and the
+# previous Dockerfile's `npm ci --only=production` could never have built.
+RUN pnpm install --frozen-lockfile --filter @petra/api...
+
+# --------------------------------------------------------------- build
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages ./packages
+COPY --from=deps /app/services ./services
+COPY . .
+
+RUN pnpm --filter @petra/api run db:generate
+RUN pnpm --filter @petra/api run build
+
+# -------------------------------------------------------------- runner
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nodejs
+
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/packages ./packages
+COPY --from=builder --chown=nodejs:nodejs /app/services/api/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/services/api/package.json ./package.json
+COPY --from=builder --chown=nodejs:nodejs /app/services/api/prisma ./prisma
+
+RUN mkdir -p uploads logs && chown -R nodejs:nodejs uploads logs
+USER nodejs
+
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3001/health || exit 1
+
+CMD ["node", "dist/index.js"]

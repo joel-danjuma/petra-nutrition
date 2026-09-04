@@ -30,9 +30,15 @@ export const config = {
   FROM_EMAIL: process.env.FROM_EMAIL || 'noreply@petra-ai.com',
   FROM_NAME: process.env.FROM_NAME || 'Petra AI',
   
-  // AI Services
-  GROQ_API_KEY: process.env.GROQ_API_KEY || '',
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+  // AI services
+  //
+  // The model provider keys are deliberately absent: they live in the agent
+  // service and nowhere else, so the process that hashes passwords and signs
+  // JWTs no longer holds credentials for Groq or Gemini. Everything
+  // inference-shaped is reached over this URL instead.
+  AGENT_URL: process.env.AGENT_URL || 'http://localhost:3002',
+  /** Shared secret presented to the agent. See middleware/internal-auth there. */
+  INTERNAL_API_KEY: process.env.INTERNAL_API_KEY || '',
   
   // File Storage
   UPLOAD_DIR: process.env.UPLOAD_DIR || './uploads',
@@ -61,11 +67,21 @@ export const config = {
   PREMIUM_PRICE_ID: process.env.PREMIUM_PRICE_ID || '',
 } as const;
 
+// Environment-specific configs. Declared before validateConfig because it
+// reads isProduction.
+export const isDevelopment = config.NODE_ENV === 'development';
+export const isProduction = config.NODE_ENV === 'production';
+export const isTest = config.NODE_ENV === 'test';
+
 // Validate required environment variables
 const requiredEnvVars = [
   'DATABASE_URL',
   'JWT_SECRET',
   'JWT_REFRESH_SECRET',
+  // Chat, meal-plan generation and the pantry scan all go through the agent.
+  // A missing URL used to surface as those three features failing while
+  // everything else worked — a confusing shape for a configuration error.
+  'AGENT_URL',
 ] as const;
 
 export const validateConfig = () => {
@@ -88,9 +104,11 @@ export const validateConfig = () => {
   if (!config.DATABASE_URL.startsWith('postgresql://')) {
     throw new Error('DATABASE_URL must be a valid PostgreSQL connection string');
   }
-};
 
-// Export environment-specific configs
-export const isDevelopment = config.NODE_ENV === 'development';
-export const isProduction = config.NODE_ENV === 'production';
-export const isTest = config.NODE_ENV === 'test';
+  // The agent authenticates callers by shared secret alone, so in production an
+  // unset key means either a 401 on every chat turn or, worse, an agent that
+  // accepts anyone who can reach it.
+  if (isProduction && !config.INTERNAL_API_KEY) {
+    throw new Error('INTERNAL_API_KEY is required in production');
+  }
+};

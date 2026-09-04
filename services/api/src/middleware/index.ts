@@ -6,7 +6,6 @@ import rateLimit from 'express-rate-limit';
 import { config } from '../config';
 import { logger, logRequest } from '../utils/logger';
 import { authMiddleware } from './auth';
-import { errorHandler } from './error';
 import { validationMiddleware } from './validation';
 
 export const setupMiddleware = (app: express.Application): void => {
@@ -62,6 +61,12 @@ export const setupMiddleware = (app: express.Application): void => {
   // Compression middleware
   app.use(compression({
     filter: (req, res) => {
+      // Never compress the SSE stream. Compression buffers, and a buffered
+      // stream arrives as one lump at the end — indistinguishable from no
+      // streaming at all, and the single easiest way to silently break it.
+      if (req.path.startsWith('/api/chat/stream')) {
+        return false;
+      }
       if (req.headers['x-no-compression']) {
         return false;
       }
@@ -132,15 +137,10 @@ export const setupMiddleware = (app: express.Application): void => {
     next();
   });
 
-  // Health check (before auth middleware)
-  app.get('/health', (req, res) => {
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0',
-      uptime: process.uptime(),
-    });
-  });
+  // No /health here. There used to be one, and because setupMiddleware runs
+  // first it shadowed the fuller handler in index.ts — so the endpoint never
+  // reported the database, Redis or the agent, only a bare "healthy". The
+  // single handler now lives in index.ts, still mounted before auth.
 
   // Authentication middleware (applied to protected routes)
   app.use('/api', authMiddleware);
@@ -148,8 +148,10 @@ export const setupMiddleware = (app: express.Application): void => {
   // Validation middleware
   app.use(validationMiddleware);
 
-  // Error handling middleware (should be last)
-  app.use(errorHandler);
+  // The error handler is deliberately NOT mounted here. It used to be, and it
+  // could never fire: this function runs before setupRoutes, and Express only
+  // reaches an error handler registered *after* the route that threw. The real
+  // mount is at the end of index.ts.
 
   logger.info('Middleware setup completed');
 };

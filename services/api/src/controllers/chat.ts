@@ -1,18 +1,85 @@
 import { Request, Response } from 'express';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
+import type {
+  AgentContext,
+  ChatRequest,
+  ChatResponse as AgentChatResponse,
+} from '@petra/agent-contract';
+
 import { ChatService } from '../services/chat';
-import { AIChatService } from '../services/ai-chat';
 import { PantryService } from '../services/pantry';
+import { agentClient } from '../services/agent-client';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
+import { prisma } from '../database';
+
+/**
+ * `ChatMessage.content` is a Json column holding either a plain string (older
+ * rows) or an array of `{ type: 'text', text }` blocks. Flatten either shape to
+ * the string the model and the clients want.
+ */
+function messageText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map(block =>
+        block && typeof block === 'object' && 'text' in block
+          ? String((block as { text: unknown }).text ?? '')
+          : ''
+      )
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
+/**
+ * Chat, after the split.
+ *
+ * This controller kept every stateful job — session ownership, persisting both
+ * messages, hydrating the recipe card — and gave up every inference job. What
+ * used to be an inline call to Groq plus a retrieval pass is now one call to
+ * the agent, which owns the recipe index and retrieves for itself.
+ *
+ * Note what did *not* change: the request and response shapes. Mobile and web
+ * cannot tell that anything moved.
+ */
+/**
+ * Pull the `done` frame out of an SSE transcript.
+ *
+ * The gateway forwards the agent's stream verbatim, but it still owns the
+ * transcript, so it reads the final frame as the bytes go past in order to
+ * persist the assistant message. Returns null when the stream ended without
+ * one — an aborted or failed turn — in which case nothing is stored, which is
+ * the right outcome: a half-generated reply is not a message.
+ */
+function parseDoneFrame(transcript: string): AgentChatResponse | null {
+  const frames = transcript.split('\n\n');
+
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const frame = frames[i];
+    if (!frame.startsWith('event: done')) continue;
+
+    const dataLine = frame.split('\n').find(line => line.startsWith('data: '));
+    if (!dataLine) continue;
+
+    try {
+      return JSON.parse(dataLine.slice(6)) as AgentChatResponse;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
 
 export class ChatController {
   private chatService: ChatService;
-  private aiChatService: AIChatService;
   private pantryService: PantryService;
 
   constructor() {
     this.chatService = new ChatService();
-    this.aiChatService = new AIChatService();
     this.pantryService = new PantryService();
   }
 
@@ -92,7 +159,7 @@ export class ChatController {
 
       // If there's an initial message, send it to AI
       if (initialMessage) {
-        await this.sendMessageToAI(session.id, userId, initialMessage);
+        await this.sendMessageToAI(session.id, req.user!, initialMessage);
       }
 
       logger.info('Chat session created', {
@@ -206,7 +273,10 @@ export class ChatController {
 
   async sendMessage(req: Request, res: Response) {
     const userId = req.user!.id;
-    const { sessionId, content, context: requestContext } = req.body;
+    const { sessionId, context: requestContext } = req.body;
+    // `message` is accepted as an alias for `content`: the mobile client sends
+    // that name, and rejecting it was a contract mismatch, not a bad request.
+    const content = messageText(req.body.content ?? req.body.message);
 
     try {
       // Validate session belongs to user
@@ -217,13 +287,13 @@ export class ChatController {
 
       // Add user message to session
       await this.chatService.addMessage(sessionId, {
-        role: 'user',
-        content,
+        role: 'USER',
+        content: [{ type: 'text', text: content }],
         timestamp: new Date(),
       });
 
       // Build context for AI
-      const aiContext = await this.buildUserContext(userId, requestContext);
+      const aiContext = await this.buildUserContext(userId, requestContext, content);
       
       // Get recent messages for conversation history
       const recentMessages = await this.chatService.getRecentMessages(
@@ -231,25 +301,25 @@ export class ChatController {
         requestContext?.maxContextMessages || 10
       );
 
-      // Send to AI
-      const aiResponse = await this.aiChatService.sendMessage(
-        recentMessages.map(msg => ({
-          role: msg.role as any,
-          content: Array.isArray(msg.content) ? msg.content.map(c => c.text).join('\n') : msg.content,
-        })),
-        aiContext,
-        this.shouldUseAdvancedModel(content)
+      // Hand the turn to the agent. Model selection and retrieval are its
+      // decisions now — it owns the recipe index and the token budget.
+      const startedAt = Date.now();
+      const aiResponse = await agentClient.chat(
+        this.buildAgentRequest(req, recentMessages, aiContext)
       );
+      const agentLatencyMs = Date.now() - startedAt;
 
       // Add AI response to session
       const aiMessage = await this.chatService.addMessage(sessionId, {
-        role: 'assistant',
+        role: 'ASSISTANT',
         content: [{ type: 'text', text: aiResponse.content }],
         timestamp: new Date(),
         metadata: {
           type: aiResponse.type,
           confidence: aiResponse.confidence,
           structuredData: aiResponse.structuredData,
+          // Drives the tappable recipe card in the chat stream.
+          recipeId: aiResponse.recipeId,
         },
       });
 
@@ -257,12 +327,23 @@ export class ChatController {
         userId,
         sessionId,
         responseType: aiResponse.type,
+        groundedRecipeId: aiResponse.recipeId,
+        model: aiResponse.model,
+        tokensUsed: aiResponse.tokensUsed,
+        // Measured rather than assumed: the extra hop was argued to be
+        // negligible against a Groq call, and this is the number that says so.
+        agentLatencyMs,
       });
 
       res.json({
         success: true,
         data: {
           message: aiMessage,
+          // Plain text alongside the stored message: the message's `content` is
+          // a JSON block array, and every client wants the string.
+          content: aiResponse.content,
+          // Hydrated so the chat card renders without a second round trip.
+          recipe: await this.hydrateRecipeCard(aiResponse.recipeId),
           suggestions: aiResponse.suggestions,
         },
         metadata: {
@@ -275,78 +356,110 @@ export class ChatController {
     }
   }
 
+  /**
+   * Proxy the agent's SSE stream straight through to the client.
+   *
+   * The bytes are piped, not buffered and re-emitted: `pipeline` propagates
+   * backpressure, errors and close in both directions, which a hand-rolled
+   * `for await` loop over chunks does not. It also aborts the agent call when
+   * the client hangs up, so a user who navigates away stops costing tokens
+   * against a 200k-per-day budget.
+   *
+   * The stream is also read as it passes, purely so the completed assistant
+   * message can be persisted — the API still owns the transcript. Reading a tee
+   * of the stream does not delay it.
+   */
   async streamMessage(req: Request, res: Response) {
     const userId = req.user!.id;
-    const { sessionId, content, context: requestContext } = req.body;
+    const { sessionId, context: requestContext } = req.body;
+    const content = messageText(req.body.content ?? req.body.message);
+
+    const session = await this.chatService.getSession(sessionId, userId);
+    if (!session) {
+      throw new NotFoundError('Chat session');
+    }
+
+    await this.chatService.addMessage(sessionId, {
+      role: 'USER',
+      content: [{ type: 'text', text: content }],
+      timestamp: new Date(),
+    });
+
+    const aiContext = await this.buildUserContext(userId, requestContext, content);
+    const recentMessages = await this.chatService.getRecentMessages(
+      sessionId,
+      requestContext?.maxContextMessages || 10
+    );
+
+    const controller = new AbortController();
+    // `res.on('close')`, not `req.on('close')` — the request closes as soon as
+    // its body is read, so listening there kills the stream before it begins.
+    res.on('close', () => {
+      if (!res.writableEnded) controller.abort();
+    });
+
+    // Deliberately outside a try: nothing has been written yet, so a failure
+    // here can still be an honest HTTP error handled by the error middleware,
+    // rather than a 200 carrying an error frame.
+    const upstream = await agentClient.chatStream(
+      this.buildAgentRequest(req, recentMessages, aiContext),
+      controller.signal
+    );
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      // nginx buffers proxied responses by default, which turns a stream into
+      // one lump delivered at the end.
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+
+    // Watch the frames go past so the finished reply can be stored, without
+    // holding any of them up.
+    let transcript = '';
+    const observe = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controllerT) {
+        transcript += Buffer.from(chunk).toString('utf8');
+        controllerT.enqueue(chunk);
+      },
+    });
 
     try {
-      // Validate session belongs to user
-      const session = await this.chatService.getSession(sessionId, userId);
-      if (!session) {
-        throw new NotFoundError('Chat session');
+      await pipeline(
+        Readable.fromWeb(upstream.body!.pipeThrough(observe) as any),
+        res
+      );
+
+      const finalResponse = parseDoneFrame(transcript);
+      if (finalResponse) {
+        await this.chatService.addMessage(sessionId, {
+          role: 'ASSISTANT',
+          content: [{ type: 'text', text: finalResponse.content }],
+          timestamp: new Date(),
+          metadata: {
+            type: finalResponse.type,
+            confidence: finalResponse.confidence,
+            recipeId: finalResponse.recipeId,
+          },
+        });
       }
-
-      // Set up Server-Sent Events
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control',
-      });
-
-      // Add user message to session
-      await this.chatService.addMessage(sessionId, {
-        role: 'user',
-        content,
-        timestamp: new Date(),
-      });
-
-      // Build context for AI
-      const aiContext = await this.buildUserContext(userId, requestContext);
-      
-      // Get recent messages for conversation history
-      const recentMessages = await this.chatService.getRecentMessages(
-        sessionId,
-        requestContext?.maxContextMessages || 10
-      );
-
-      let fullResponse = '';
-
-      // Stream AI response
-      await this.aiChatService.streamMessage(
-        recentMessages.map(msg => ({
-          role: msg.role as any,
-          content: Array.isArray(msg.content) ? msg.content.map(c => c.text).join('\n') : msg.content,
-        })),
-        aiContext,
-        (chunk: string) => {
-          fullResponse += chunk;
-          res.write(`data: ${JSON.stringify({ content: chunk, isComplete: false })}\n\n`);
-        },
-        this.shouldUseAdvancedModel(content)
-      );
-
-      // Add complete AI response to session
-      await this.chatService.addMessage(sessionId, {
-        role: 'assistant',
-        content: [{ type: 'text', text: fullResponse }],
-        timestamp: new Date(),
-      });
-
-      // Send completion signal
-      res.write(`data: ${JSON.stringify({ content: '', isComplete: true })}\n\n`);
-      res.end();
 
       logger.info('Chat message streamed', {
         userId,
         sessionId,
-        responseLength: fullResponse.length,
+        persisted: Boolean(finalResponse),
+        model: finalResponse?.model,
+        tokensUsed: finalResponse?.tokensUsed,
       });
     } catch (error) {
+      if (controller.signal.aborted) {
+        logger.info('Client disconnected mid-stream', { userId, sessionId });
+        return;
+      }
       logger.error('Failed to stream chat message:', error);
-      res.write(`data: ${JSON.stringify({ error: 'Failed to process message' })}\n\n`);
-      res.end();
+      if (!res.writableEnded) res.end();
     }
   }
 
@@ -359,7 +472,14 @@ export class ChatController {
     }
 
     try {
-      const aiResponse = await this.aiChatService.generateRecipe(ingredients, preferences);
+      const aiResponse = await agentClient.generateRecipe({
+        ingredients,
+        preferences,
+        user: {
+          id: userId,
+          subscriptionTier: req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
+        },
+      });
 
       logger.info('Recipe generated via chat', {
         userId,
@@ -394,7 +514,15 @@ export class ChatController {
 
     try {
       const context = await this.buildUserContext(userId);
-      const aiResponse = await this.aiChatService.generateMealPlan(days, preferences, context);
+      const aiResponse = await agentClient.generateMealPlan({
+        days,
+        preferences,
+        context,
+        user: {
+          id: userId,
+          subscriptionTier: req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
+        },
+      });
 
       logger.info('Meal plan generated via chat', {
         userId,
@@ -422,7 +550,7 @@ export class ChatController {
     }
 
     try {
-      const aiResponse = await this.aiChatService.getCookingTips(topic);
+      const aiResponse = await agentClient.cookingTips({ topic });
 
       logger.info('Cooking tips requested', {
         userId: req.user!.id,
@@ -450,7 +578,7 @@ export class ChatController {
     }
 
     try {
-      const aiResponse = await this.aiChatService.analyzeNutrition(foodItems);
+      const aiResponse = await agentClient.analyzeNutrition({ foodItems });
 
       logger.info('Nutrition analysis requested', {
         userId: req.user!.id,
@@ -470,69 +598,156 @@ export class ChatController {
     }
   }
 
-  private async sendMessageToAI(sessionId: string, userId: string, message: string) {
-    // Helper method to send a message and get AI response
+  /**
+   * Send the opening message of a brand-new session.
+   *
+   * Takes the tier explicitly rather than re-reading it: the caller already has
+   * an authenticated request, and the agent needs it to know whether pantry
+   * context applies.
+   */
+  private async sendMessageToAI(
+    sessionId: string,
+    user: { id: string; subscriptionTier: string },
+    message: string
+  ) {
     await this.chatService.addMessage(sessionId, {
-      role: 'user',
+      role: 'USER',
       content: [{ type: 'text', text: message }],
       timestamp: new Date(),
     });
 
-    const context = await this.buildUserContext(userId);
+    const context = await this.buildUserContext(user.id);
     const recentMessages = await this.chatService.getRecentMessages(sessionId, 5);
 
-    const aiResponse = await this.aiChatService.sendMessage(
-      recentMessages.map(msg => ({
-        role: msg.role as any,
-        content: Array.isArray(msg.content) ? msg.content.map(c => c.text).join('\n') : msg.content,
+    const aiResponse = await agentClient.chat({
+      messages: recentMessages.map(msg => ({
+        role: msg.role.toLowerCase() as ChatRequest['messages'][number]['role'],
+        content: messageText(msg.content),
       })),
-      context
-    );
+      user: {
+        id: user.id,
+        subscriptionTier: user.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
+      },
+      context,
+    });
 
     await this.chatService.addMessage(sessionId, {
-      role: 'assistant',
+      role: 'ASSISTANT',
       content: [{ type: 'text', text: aiResponse.content }],
       timestamp: new Date(),
       metadata: {
         type: aiResponse.type,
         confidence: aiResponse.confidence,
+        // Carried so an opening message can render a recipe card too; the
+        // non-streaming path already did this and this one silently did not.
+        recipeId: aiResponse.recipeId,
       },
     });
   }
 
-  private async buildUserContext(userId: string, requestContext?: any) {
+  /**
+   * Turn a grounded recipe id into the fields the chat card renders. Returns
+   * null rather than throwing: a stale or hallucinated id should cost the card,
+   * not the whole reply.
+   */
+  private async hydrateRecipeCard(recipeId?: string) {
+    if (!recipeId) return null;
     try {
-      // Get user profile and preferences
+      const recipe = await prisma.recipe.findUnique({
+        where: { id: recipeId },
+        select: {
+          id: true,
+          title: true,
+          imageUrl: true,
+          totalTime: true,
+          servings: true,
+          dietaryTags: true,
+          nutrition: { select: { calories: true, protein: true } },
+          _count: { select: { ingredients: true } },
+        },
+      });
+      if (!recipe) {
+        logger.warn('Grounded recipe id not found', { recipeId });
+        return null;
+      }
+      return recipe;
+    } catch (err) {
+      logger.warn('Failed to hydrate recipe card', err);
+      return null;
+    }
+  }
+
+  /**
+   * Assemble the agent request from persisted state.
+   *
+   * Everything here is a database read the agent is not allowed to make: who
+   * the user is, what they keep in their pantry, what they can't eat. The agent
+   * gets it as data and gives back prose.
+   */
+  private buildAgentRequest(
+    req: Request,
+    recentMessages: { role: string; content: unknown }[],
+    context: AgentContext
+  ): ChatRequest {
+    return {
+      messages: recentMessages.map(msg => ({
+        role: msg.role.toLowerCase() as ChatRequest['messages'][number]['role'],
+        content: messageText(msg.content),
+      })),
+      user: {
+        id: req.user!.id,
+        subscriptionTier:
+          req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
+      },
+      context,
+    };
+  }
+
+  /**
+   * What the API knows about the user.
+   *
+   * This used to do two unrelated jobs — load the profile and pantry, and run
+   * recipe retrieval. The second half moved to the agent, which owns the recipe
+   * index; that division is the service boundary. What remains is purely a
+   * database read.
+   */
+  private async buildUserContext(
+    userId: string,
+    requestContext?: any,
+    _userMessage?: string
+  ): Promise<AgentContext> {
+    try {
       const user = await this.chatService.getUserProfile(userId);
-      
-      // Get current pantry items if user has premium
+
+      // Pantry-aware suggestions are a premium feature.
       let pantryItems: string[] = [];
+      let pantryNames: string[] = [];
       if (user?.subscriptionTier === 'PREMIUM') {
         const pantryResult = await this.pantryService.getItems(userId, { limit: 50 });
-        pantryItems = pantryResult.items.map(item => `${item.name} (${item.quantity} ${item.unit})`);
+        pantryItems = pantryResult.items.map(
+          item => `${item.name} (${item.quantity} ${item.unit})`
+        );
+        pantryNames = pantryResult.items.map(item => item.name);
       }
 
       return {
         userPreferences: user?.profile,
         currentPantryItems: pantryItems,
+        pantryNames,
         dietaryRestrictions: user?.profile?.dietaryRestrictions || [],
         healthGoals: user?.profile?.healthGoals || [],
+        allergies: user?.profile?.allergies || [],
         ...requestContext,
       };
     } catch (error) {
       logger.warn('Failed to build user context:', error);
-      return {};
+      return {
+        currentPantryItems: [],
+        pantryNames: [],
+        dietaryRestrictions: [],
+        healthGoals: [],
+        allergies: [],
+      };
     }
-  }
-
-  private shouldUseAdvancedModel(content: string): boolean {
-    const advancedKeywords = [
-      'meal plan', 'nutrition', 'complex recipe', 'detailed analysis',
-      'multiple days', 'comprehensive', 'elaborate'
-    ];
-
-    return advancedKeywords.some(keyword => 
-      content.toLowerCase().includes(keyword)
-    );
   }
 }

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,21 +23,27 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
     "paths": {
-      "@petra/shared/*": ["packages/shared/src/*"],
-      "@petra/shared": ["packages/shared/src"]
+      "@petra/shared/*": [
+        "./packages/shared/src/*"
+      ],
+      "@petra/shared": [
+        "./packages/shared/src"
+      ]
     }
   },
   "include": [
     "packages/*/src/**/*",
-    "packages/*/app/**/*",
-    "packages/*/types/**/*",
+    "services/*/src/**/*",
+    "apps/*/src/**/*",
+    "apps/*/app/**/*",
+    "apps/*/types/**/*",
     "**/*.ts",
     "**/*.tsx"
   ],
   "exclude": [
     "node_modules",
+    "services/agent/src/generated",
     "dist",
     "build",
     ".next",
@@ -46,13 +56,23 @@
       "path": "./packages/shared"
     },
     {
-      "path": "./packages/backend"
+      "path": "./packages/agent-contract"
     },
     {
-      "path": "./packages/web"
+      "path": "./packages/service-kit"
     },
     {
-      "path": "./packages/mobile"
+      "path": "./services/api"
+    },
+    {
+      "path": "./services/agent"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./apps/mobile"
     }
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

@@ -1,16 +1,14 @@
 import { Request, Response } from 'express';
 import { RecipeService } from '../services/recipe';
-import { AIChatService } from '../services/ai-chat';
+import { agentClient } from '../services/agent-client';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
 export class RecipeController {
   private recipeService: RecipeService;
-  private aiChatService: AIChatService;
 
   constructor() {
     this.recipeService = new RecipeService();
-    this.aiChatService = new AIChatService();
   }
 
   async searchRecipes(req: Request, res: Response) {
@@ -164,14 +162,24 @@ export class RecipeController {
         },
       ];
 
-      const context = preferences
-        ? {
-            dietaryRestrictions: preferences.dietaryRestrictions,
-            healthGoals: preferences.healthGoals,
-          }
-        : undefined;
-
-      const aiResponse = await this.aiChatService.sendMessage(messages, context, true);
+      const aiResponse = await agentClient.chat({
+        messages,
+        user: {
+          id: userId,
+          subscriptionTier:
+            req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
+        },
+        context: {
+          currentPantryItems: [],
+          pantryNames: [],
+          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
+          healthGoals: preferences?.healthGoals ?? [],
+          allergies: [],
+        },
+        // Writing a whole recipe from a bare prompt is the kind of ask the
+        // large model is actually for.
+        options: { advancedModel: true },
+      });
 
       logger.info('Recipe generated via AI', { userId });
 

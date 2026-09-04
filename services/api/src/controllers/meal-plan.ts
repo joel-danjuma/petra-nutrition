@@ -1,16 +1,14 @@
 import { Request, Response } from 'express';
 import { MealPlanService } from '../services/meal-plan';
-import { AIChatService } from '../services/ai-chat';
+import { agentClient } from '../services/agent-client';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
 export class MealPlanController {
   private mealPlanService: MealPlanService;
-  private aiChatService: AIChatService;
 
   constructor() {
     this.mealPlanService = new MealPlanService();
-    this.aiChatService = new AIChatService();
   }
 
   async getMealPlans(req: Request, res: Response) {
@@ -136,11 +134,21 @@ export class MealPlanController {
         },
       ];
 
-      const aiResponse = await this.aiChatService.sendMessage(messages, {
-        dietaryRestrictions: preferences?.dietaryRestrictions,
-        healthGoals: preferences?.healthGoals,
-        currentPantryItems: pantryItems,
-      }, days > 3);
+      const aiResponse = await agentClient.chat({
+        messages,
+        user: {
+          id: userId,
+          subscriptionTier: isPremium ? 'PREMIUM' : 'FREE',
+        },
+        context: {
+          currentPantryItems: pantryItems ?? [],
+          pantryNames: pantryItems ?? [],
+          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
+          healthGoals: preferences?.healthGoals ?? [],
+          allergies: [],
+        },
+        options: { advancedModel: days > 3 },
+      });
 
       logger.info('Meal plan generated via AI', { userId, days });
 
@@ -171,9 +179,20 @@ export class MealPlanController {
         },
       ];
 
-      const aiResponse = await this.aiChatService.sendMessage(messages, {
-        dietaryRestrictions: preferences?.dietaryRestrictions,
-        currentPantryItems: pantryItems,
+      const aiResponse = await agentClient.chat({
+        messages,
+        user: {
+          id: userId,
+          subscriptionTier:
+            req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
+        },
+        context: {
+          currentPantryItems: pantryItems ?? [],
+          pantryNames: pantryItems ?? [],
+          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
+          healthGoals: [],
+          allergies: [],
+        },
       });
 
       res.json({

@@ -1,18 +1,18 @@
 import { Request, Response } from 'express';
 import { PantryService } from '../services/pantry';
-import { ImageRecognitionService } from '../services/image-recognition';
+import fs from 'fs/promises';
+
+import { agentClient } from '../services/agent-client';
 import { BarcodeService } from '../services/barcode';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
 export class PantryController {
   private pantryService: PantryService;
-  private imageRecognitionService: ImageRecognitionService;
   private barcodeService: BarcodeService;
 
   constructor() {
     this.pantryService = new PantryService();
-    this.imageRecognitionService = new ImageRecognitionService();
     this.barcodeService = new BarcodeService();
   }
 
@@ -164,9 +164,10 @@ export class PantryController {
   async delete(req: Request, res: Response) {
     const { id } = req.params;
     const userId = req.user!.id;
+    const reason = req.query.reason as 'used' | 'wasted' | undefined;
 
     try {
-      const deleted = await this.pantryService.delete(id, userId);
+      const deleted = await this.pantryService.delete(id, userId, reason);
 
       if (!deleted) {
         throw new NotFoundError('Pantry item');
@@ -264,10 +265,7 @@ export class PantryController {
     }
 
     try {
-      const result = await this.imageRecognitionService.recognizeFood(
-        imageBase64,
-        context
-      );
+      const result = await agentClient.recognizeImage({ image: imageBase64, context });
 
       logger.info('Image recognition completed', {
         userId: req.user!.id,
@@ -297,13 +295,12 @@ export class PantryController {
     const { context = 'pantry_item' } = req.body;
 
     try {
-      const result = await this.imageRecognitionService.recognizeFromFile(
-        req.file.path,
-        context
-      );
+      // Multer, the upload directory and its cleanup stay here: file handling
+      // is the gateway's job. Only the image bytes cross to the agent, which
+      // does the resizing and the vision call.
+      const image = await fs.readFile(req.file.path, { encoding: 'base64' });
+      const result = await agentClient.recognizeImage({ image, context });
 
-      // Clean up uploaded file
-      const fs = require('fs').promises;
       try {
         await fs.unlink(req.file.path);
       } catch (cleanupError) {
