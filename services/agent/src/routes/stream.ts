@@ -15,7 +15,7 @@ const send = (res: Response, event: string, data: unknown) => {
 /**
  * Stream one chat turn as Server-Sent Events.
  *
- * Three things here are load-bearing:
+ * Four things here are load-bearing:
  *
  * - The headers disable buffering everywhere it can happen. `X-Accel-Buffering`
  *   is for nginx; `flushHeaders` gets the 200 out before the first token, which
@@ -25,6 +25,10 @@ const send = (res: Response, event: string, data: unknown) => {
  *   an agreed frame the client would just hang.
  * - `close` aborts the model call. A user navigating away used to leave Groq
  *   generating tokens nobody would ever read, billed against a 200k/day budget.
+ * - `node` frames go out before any `chunk`. A turn that composes a recipe and
+ *   then computes macros spends several seconds doing work with nothing on
+ *   screen, and a bare spinner for that long reads as a hang. They are
+ *   advisory: a client that ignores them sees the stream it saw before.
  */
 export const streamChat = async (req: Request, res: Response): Promise<void> => {
   const parsed = chatRequestSchema.safeParse(req.body);
@@ -79,7 +83,11 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
     const response = await runChatTurnStreaming(
       request,
       chunk => send(res, 'chunk', { content: chunk }),
-      controller.signal
+      controller.signal,
+      {
+        onNode: (node, label) => send(res, 'node', { node, label }),
+        onInterrupt: (question, options) => send(res, 'interrupt', { question, options }),
+      }
     );
 
     send(res, 'done', response);
@@ -88,6 +96,8 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       userId: request.user.id,
       model: response.model,
       tokensUsed: response.tokensUsed,
+      responseType: response.type,
+      generated: !!response.generatedRecipe,
       durationMs: Date.now() - started,
     });
   } catch (error) {

@@ -1,22 +1,34 @@
+import { randomUUID } from 'node:crypto';
+
 import type {
   AgentContext,
   ChatRequest,
   ChatResponse,
+  GraphNode,
 } from '@petra/agent-contract';
 
-import { AIChatService, type ChatContext, type RetrievedRecipeContext } from './llm/groq';
+import { AIChatService, type RetrievedRecipeContext } from './llm/groq';
+import { RECURSION_LIMIT, chatGraph } from './graph';
+import { lastUserMessage } from './graph/state';
+import { withTurnContext } from './graph/turn-context';
 import { retrievalService } from './retrieval';
 import { logger } from './utils/logger';
 
 /**
  * One turn of conversation, start to finish.
  *
- * This is the whole reason the agent is worth splitting out: a pure function
- * from a request to a reply, with no database of its own beyond the recipe
- * index and no notion of sessions, users or persistence. It can be exercised in
- * a test with a literal object, which was never true of the controller it came
- * from — that one needed a database, a Redis, an authenticated request and a
- * seeded user before it would produce a single sentence.
+ * Still a pure function from a request to a reply, with no database of its own
+ * beyond the recipe index and no notion of sessions, users or persistence. It
+ * can be exercised in a test with a literal object, which was never true of
+ * the controller it came from. What changed is what happens inside: the turn is
+ * now a graph rather than a single model call, so retrieval that misses has
+ * somewhere to go.
+ *
+ * The signatures are deliberately identical to the pre-graph ones.
+ * `services/api` and both clients are untouched: the same request goes in, the
+ * same `ChatResponse` comes out, with new *optional* fields on it. A client
+ * that ignores `generatedRecipe` and `nutrition` sees exactly what it saw
+ * before.
  *
  * The API still owns everything stateful: it validates the session, persists
  * both messages, and hydrates the recipe card. It hands us context; we hand
@@ -28,11 +40,11 @@ const aiChatService = new AIChatService();
 /**
  * Keywords that justify the large model.
  *
- * An earlier version escalated whenever retrieval returned hits — which is
- * always — on the belief that the small model ignored the shortlist. Once the
- * grounding rules were made directive both models followed them identically,
- * so that escalation bought nothing and drained a 200k-token daily budget in
- * an afternoon. This heuristic still catches the genuinely complex asks.
+ * Retained for `options.advancedModel` and for the single-shot endpoints that
+ * still call `AIChatService` directly. Inside the graph, model choice is a
+ * per-node decision in `llm/provider.ts` — the compose node gets the large
+ * model because composing under constraints is the actual reasoning task, and
+ * the router gets the fast one because classification never needed more.
  */
 const ADVANCED_KEYWORDS = [
   'meal plan',
@@ -50,8 +62,11 @@ export const shouldUseAdvancedModel = (content: string): boolean =>
 /**
  * Run retrieval for this turn and shape the hits for the prompt.
  *
- * Retrieval failure must never fail the chat: an ungrounded reply is worse
- * than a grounded one, but far better than an error.
+ * Kept because `POST /v1/recipes/retrieve` and the meal-plan path still want
+ * exactly this, and because its contract — retrieval failure must never fail
+ * the chat — is now a graph-level policy in `nodes/search.ts` rather than a
+ * property of one function. An ungrounded reply is worse than a grounded one,
+ * but far better than an error.
  */
 export const retrieveForTurn = async (
   userMessage: string,
@@ -83,78 +98,95 @@ export const retrieveForTurn = async (
   }
 };
 
-/** Translate the wire context into the shape the prompt builder expects. */
-const toChatContext = (
-  context: AgentContext | undefined,
-  retrievedRecipes: RetrievedRecipeContext[]
-): ChatContext => ({
-  userPreferences: context?.userPreferences,
-  currentPantryItems: context?.currentPantryItems ?? [],
-  dietaryRestrictions: context?.dietaryRestrictions ?? [],
-  healthGoals: context?.healthGoals ?? [],
-  allergies: context?.allergies ?? [],
-  activeMealPlan: context?.activeMealPlan,
-  lastRecipeSearch: context?.lastRecipeSearch,
-  retrievedRecipes,
-});
+/**
+ * The graph thread this turn belongs to.
+ *
+ * The API's session id when there is one, so the checkpointed channels line up
+ * with the conversation the user is actually having. A random id otherwise,
+ * which makes the turn self-contained — the correct behaviour for a one-off
+ * call, and the reason nothing here needs a session to work.
+ *
+ * Note the agent is *told* the thread id; it never derives one from a user id.
+ * It has no user table to derive it from, and that is the point.
+ */
+const threadFor = (request: ChatRequest): string =>
+  request.options?.threadId ?? `turn-${randomUUID()}`;
 
-/** The last thing the user actually said — what retrieval keys off. */
-const lastUserMessage = (messages: ChatRequest['messages']): string => {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') return messages[i].content;
-  }
-  return '';
-};
+interface RunOptions {
+  onChunk?: (text: string) => void;
+  onNode?: (node: GraphNode, label: string) => void;
+  onInterrupt?: (question: string, options: string[]) => void;
+  signal?: AbortSignal;
+}
 
-export const runChatTurn = async (request: ChatRequest): Promise<ChatResponse> => {
-  const { messages, context, options } = request;
+/**
+ * Invoke the graph and return its response envelope.
+ *
+ * `response` being null means every node ran and none produced a reply, which
+ * is a wiring bug rather than a state worth rendering — so it throws instead of
+ * handing the client an empty bubble to display.
+ */
+async function runGraph(request: ChatRequest, options: RunOptions): Promise<ChatResponse> {
+  const { messages, context, options: requestOptions } = request;
   const userMessage = lastUserMessage(messages);
+  const started = Date.now();
 
-  const retrievedRecipes = await retrieveForTurn(
-    userMessage,
-    context,
-    options?.maxRetrieved ?? 6
+  const final = await withTurnContext(options, () =>
+    chatGraph().invoke(
+      { messages, context, options: requestOptions, userMessage, userId: request.user.id },
+      {
+        configurable: { thread_id: threadFor(request) },
+        recursionLimit: RECURSION_LIMIT,
+        ...(options.signal ? { signal: options.signal } : {}),
+      }
+    )
   );
 
-  const advanced = options?.advancedModel ?? shouldUseAdvancedModel(userMessage);
+  if (!final.response) {
+    logger.error('Graph completed without a response', {
+      intent: final.intent,
+      hasDraft: !!final.draft,
+    });
+    throw new Error('AI service is currently unavailable');
+  }
 
-  const response = await aiChatService.sendMessage(
-    messages,
-    toChatContext(context, retrievedRecipes),
-    advanced
-  );
+  logger.info('Graph turn complete', {
+    intent: final.intent,
+    type: final.response.type,
+    composeAttempts: final.composeAttempts,
+    durationMs: Date.now() - started,
+    tokensUsed: final.tokensUsed,
+  });
 
-  return response as ChatResponse;
-};
+  return final.response;
+}
+
+export const runChatTurn = async (request: ChatRequest): Promise<ChatResponse> =>
+  runGraph(request, {});
 
 /**
  * Streaming variant. `onChunk` receives visible text as it arrives; the
  * resolved value is the same fully-parsed response the non-streaming path
  * returns, so the caller can persist one and render the other.
+ *
+ * `onNode` and `onInterrupt` are optional and additive. The signature keeps its
+ * original three parameters in their original positions, so `routes/stream.ts`
+ * and anything else calling it compiles unchanged.
  */
 export const runChatTurnStreaming = async (
   request: ChatRequest,
   onChunk: (text: string) => void,
-  signal?: AbortSignal
-): Promise<ChatResponse> => {
-  const { messages, context, options } = request;
-  const userMessage = lastUserMessage(messages);
-
-  const retrievedRecipes = await retrieveForTurn(
-    userMessage,
-    context,
-    options?.maxRetrieved ?? 6
-  );
-
-  const advanced = options?.advancedModel ?? shouldUseAdvancedModel(userMessage);
-
-  return aiChatService.streamChatResponse(
-    messages,
-    toChatContext(context, retrievedRecipes),
+  signal?: AbortSignal,
+  events?: {
+    onNode?: (node: GraphNode, label: string) => void;
+    onInterrupt?: (question: string, options: string[]) => void;
+  }
+): Promise<ChatResponse> =>
+  runGraph(request, {
     onChunk,
-    advanced,
-    signal
-  ) as Promise<ChatResponse>;
-};
+    signal,
+    ...(events?.onNode ? { onNode: events.onNode } : {}),
+    ...(events?.onInterrupt ? { onInterrupt: events.onInterrupt } : {}),
+  });
 
 export { aiChatService };
