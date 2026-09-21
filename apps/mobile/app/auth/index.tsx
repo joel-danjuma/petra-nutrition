@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { View, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@petra/shared';
 
@@ -56,7 +55,9 @@ export default function AuthScreen() {
         });
       }
 
-      router.replace('/(tabs)');
+      // No navigation here: the root layout's guards register the signed-in
+      // stack as soon as the store updates, and navigating to a screen that is
+      // still being registered races that.
     } catch (error: any) {
       Alert.alert('Error', error.message || `${isLogin ? 'Login' : 'Registration'} failed`);
     } finally {
