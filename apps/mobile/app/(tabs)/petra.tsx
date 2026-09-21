@@ -22,6 +22,35 @@ import { Text } from '../../src/components/ui/Text';
 import { RecipeCard, RecipeCardSummary } from '../../src/components/RecipeCard';
 import { API_URL } from '../../src/config/api';
 
+/**
+ * A dish Petra composed rather than retrieved.
+ *
+ * Declared structurally here rather than imported from @petra/agent-contract:
+ * the client only reads these fields, and importing the contract would pull zod
+ * through Metro for types alone. The web chat does the same thing for the same
+ * reason.
+ */
+interface GeneratedRecipe {
+  title: string;
+  description?: string;
+  cuisine?: string | null;
+  servings: number;
+  prepTime: number;
+  cookTime: number;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  ingredients: { name: string; amount: number; unit: string; notes?: string; staple?: boolean }[];
+  instructions: { step: number; instruction: string; duration?: number; tip?: string }[];
+  safetyNote?: string;
+  zeroWasteNote?: string;
+  inspiredBy: string[];
+}
+
+interface Nutrition {
+  perServing: { calories: number; protein: number; carbs: number; fat: number };
+  servings: number;
+  confidence: 'high' | 'medium' | 'low';
+}
+
 interface Message {
   id: string;
   content: string;
@@ -29,6 +58,43 @@ interface Message {
   timestamp: Date;
   /** Set when Petra recommended a real recipe from the library. */
   recipe?: RecipeCardSummary | null;
+  /** Set when Petra wrote the dish herself. No row behind it until it is saved. */
+  generatedRecipe?: GeneratedRecipe | null;
+  /** Macros for the composed dish — shown on the card, sent with the save. */
+  nutrition?: Nutrition | null;
+  /** Kept, not rendered: the model is briefed to state these in its prose. */
+  assumptions?: string[];
+  compromises?: string[];
+  /** Set once the first tap persisted the draft, so a second tap cannot duplicate it. */
+  savedRecipeId?: string;
+}
+
+/**
+ * Shape a composed dish into the card summary.
+ *
+ * Note this usually shows *more* than a library card: prep and cook times are
+ * always present on a generation, while most imported recipes carry no timings
+ * at all and `metaLine` correctly omits what it does not know.
+ */
+function summaryFromGenerated(message: Message): RecipeCardSummary {
+  const generated = message.generatedRecipe!;
+  return {
+    // Never navigated to. The press handler saves first and uses the real id it
+    // gets back; a made-up uuid would 404 against a uuid-validated route.
+    id: message.savedRecipeId ?? `draft-${message.id}`,
+    title: generated.title,
+    // Deliberately null: the saved row carries no image either, so the card's
+    // placeholder is the same one the recipe screen will show after the tap.
+    imageUrl: null,
+    totalTime: generated.prepTime + generated.cookTime,
+    servings: generated.servings,
+    nutrition: message.nutrition
+      ? {
+          calories: message.nutrition.perServing.calories,
+          protein: message.nutrition.perServing.protein,
+        }
+      : null,
+  };
 }
 
 const SUGGESTIONS = ['Something with what I have', 'Under 30 minutes', 'Leftover ideas'];
@@ -47,6 +113,9 @@ export default function PetraChatScreen() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  /** Which message's composed recipe is mid-save. Per message, not global:
+   *  a conversation can hold several composed cards. */
+  const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -116,6 +185,10 @@ export default function PetraChatScreen() {
           role: 'assistant',
           timestamp: new Date(),
           recipe: data.data?.recipe ?? null,
+          generatedRecipe: data.data?.generatedRecipe ?? null,
+          nutrition: data.data?.nutrition ?? null,
+          assumptions: data.data?.assumptions ?? [],
+          compromises: data.data?.compromises ?? [],
         };
         setMessages(prev => [...prev, aiResponse]);
       } else {
@@ -125,6 +198,67 @@ export default function PetraChatScreen() {
       Alert.alert('Error', error.message || 'Failed to send message. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  /**
+   * Open a dish Petra composed, saving it on the way.
+   *
+   * Generated recipes are ephemeral until someone wants one: writing a row for
+   * every suggestion would fill the library with dishes nobody opened. The tap
+   * is that moment of wanting, so it persists, then navigates to the real
+   * recipe screen — from there it behaves like any other recipe, cook mode
+   * included.
+   */
+  const openGeneratedRecipe = async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message?.generatedRecipe) return;
+
+    // Already saved: straight through, no second write.
+    if (message.savedRecipeId) {
+      router.push(`/recipes/${message.savedRecipeId}`);
+      return;
+    }
+
+    // A save already in flight is what actually prevents a duplicate row — the
+    // id it would dedupe against does not exist until the response lands.
+    if (savingMessageId) return;
+
+    if (!token) {
+      Alert.alert('Sign in to save recipes', 'Your session has expired. Sign in and try again.');
+      return;
+    }
+
+    setSavingMessageId(messageId);
+
+    try {
+      const res = await fetch(`${API_URL}/recipes/generated`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipe: message.generatedRecipe,
+          // undefined, not null: the field is optional and null fails validation.
+          nutrition: message.nutrition ?? undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error?.message || 'Save failed');
+
+      const savedId = data.data.id;
+      setMessages(prev =>
+        prev.map(m => (m.id === messageId ? { ...m, savedRecipeId: savedId } : m))
+      );
+      router.push(`/recipes/${savedId}`);
+    } catch (error: any) {
+      // The draft stays on the message, so the card is still tappable and the
+      // user can simply try again.
+      Alert.alert(
+        'Could not save that recipe',
+        error?.message ?? 'Try again in a moment.'
+      );
+    } finally {
+      setSavingMessageId(null);
     }
   };
 
@@ -155,12 +289,25 @@ export default function PetraChatScreen() {
         renderItem={({ item }) => (
           <View>
             <ChatMessage message={item} />
+            {/* A real library recipe always wins: it has photography, ratings
+                and a row that already exists. A composed dish is the fallback
+                for when nothing in the library fits. */}
             {item.recipe ? (
               <RecipeCard
                 variant="compact"
                 recipe={item.recipe}
                 showOpenAffordance
                 onPress={() => router.push(`/recipes/${item.recipe!.id}`)}
+                style={styles.recipeCard}
+              />
+            ) : item.generatedRecipe ? (
+              <RecipeCard
+                variant="compact"
+                recipe={summaryFromGenerated(item)}
+                badge="Invented for you"
+                showOpenAffordance
+                loading={savingMessageId === item.id}
+                onPress={() => openGeneratedRecipe(item.id)}
                 style={styles.recipeCard}
               />
             ) : null}
