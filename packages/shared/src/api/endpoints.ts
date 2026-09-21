@@ -8,7 +8,7 @@ import {
   MealPlan, CreateMealPlan, UpdateMealPlan, MealPlanSearch, MealPlanSearchResponse,
   MealPlanGenerationRequest, QuickMealSuggestion,
   ShoppingList, CreateShoppingList, UpdateShoppingList, ShoppingListSearch, ShoppingListSearchResponse,
-  GenerateShoppingList, BulkUpdateShoppingListItems,
+  GenerateShoppingList, BulkUpsertShoppingListItems,
   ChatSession, CreateChatSession, SendMessage, ChatSessionSearch, ChatSessionSearchResponse,
   LogWasteEvent, LogMealCompletion, WasteSummary, TodayNutrition,
   ApiResponse, PaginatedResponse
@@ -181,7 +181,8 @@ export class PetraApiEndpoints {
     generateFromMealPlan: (data: GenerateShoppingList): Promise<ApiResponse<ShoppingList>> =>
       this.client.post('/shopping-lists/generate', data),
 
-    updateItems: (id: string, data: BulkUpdateShoppingListItems): Promise<ApiResponse<ShoppingList>> =>
+    /** Upsert: an item with an `id` is updated, one without is created. */
+    updateItems: (id: string, data: BulkUpsertShoppingListItems): Promise<ApiResponse<ShoppingList>> =>
       this.client.patch(`/shopping-lists/${id}/items`, data),
 
     markComplete: (id: string): Promise<ApiResponse<ShoppingList>> =>

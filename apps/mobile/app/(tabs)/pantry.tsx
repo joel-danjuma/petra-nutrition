@@ -1,14 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { View, FlatList, Pressable, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Package, ScanLine } from 'lucide-react-native';
+import { Package, Plus, ScanLine } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { enumEquals, usePantry } from '@petra/shared';
 
-import { color, radius, semantic, shadow, space, type } from '../../src/theme';
+import { color, radius, semantic, shadow, space } from '../../src/theme';
 import { Text } from '../../src/components/ui/Text';
+import { Button } from '../../src/components/ui/Button';
 import { Chip } from '../../src/components/ui/Chip';
 import { Card } from '../../src/components/ui/Card';
+import { ErrorBanner } from '../../src/components/ui/ErrorBanner';
 import { SearchBar } from '../../src/components/SearchBar';
 
 // Ids are the canonical enum values so they compare directly against what the
@@ -51,7 +53,7 @@ function shelfLife(item: { isLowStock?: boolean; expirationDate?: string | Date 
 }
 
 export default function PantryScreen() {
-  const { items, isLoading, fetchItems, deleteItem } = usePantry();
+  const { items, isLoading, error, fetchItems, deleteItem, clearError } = usePantry();
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [category, setCategory] = useState('all');
@@ -171,17 +173,31 @@ export default function PantryScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.ink} />
         }
         ListEmptyComponent={
-          !isLoading ? (
+          isLoading ? null : error ? (
+            // Never the empty state on a failed load: "your pantry is empty" is
+            // an answer, and the app does not have one.
+            <ErrorBanner
+              message={error}
+              onRetry={() => {
+                clearError();
+                fetchItems();
+              }}
+              style={styles.errorBanner}
+            />
+          ) : (
             <View style={styles.emptyContainer}>
               <Package size={40} color={color.muted} strokeWidth={1.5} />
               <Text preset="titleMd" align="center">
                 Your pantry is empty
               </Text>
               <Text preset="bodyMd" align="center">
-                Scan a barcode or a shelf of fresh food to get started.
+                Scan a barcode or a shelf of fresh food, or add something by hand.
               </Text>
+              <Button variant="secondary" onPress={() => router.push('/pantry/add')}>
+                Add an item
+              </Button>
             </View>
-          ) : null
+          )
         }
         ListFooterComponent={
           filteredItems.length > 0 ? (
@@ -193,6 +209,21 @@ export default function PantryScreen() {
           ) : null
         }
       />
+
+      {/* Scanning is the fast path, but it was the only path: the add screen
+          had no route into it from here at all. */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.addFab,
+          { backgroundColor: pressed ? color.surfaceSoft : color.canvas },
+          shadow.buttonRest,
+        ]}
+        onPress={() => router.push('/pantry/add')}
+        accessibilityRole="button"
+        accessibilityLabel="Add an item by hand"
+      >
+        <Plus size={20} color={color.ink} strokeWidth={1.85} />
+      </Pressable>
 
       <Pressable
         style={({ pressed }) => [
@@ -266,6 +297,20 @@ const styles = StyleSheet.create({
     paddingTop: space.section / 2,
     paddingHorizontal: space.xxl,
     gap: space.sm,
+  },
+  errorBanner: { marginHorizontal: space.lg, marginTop: space.lg },
+  addFab: {
+    position: 'absolute',
+    // Sits to the left of Scan, sized to the same vertical rhythm.
+    right: space.lg + 116,
+    bottom: space.lg,
+    width: 48,
+    height: 48,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scanFab: {
     position: 'absolute',

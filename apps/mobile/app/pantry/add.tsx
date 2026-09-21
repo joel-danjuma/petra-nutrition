@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Pressable,
@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { ItemCategory, StorageLocation, toCanonical, usePantry } from '@petra/shared';
 
+import { errorMessage } from '../../src/api/errors';
 import { color, radius, space } from '../../src/theme';
 import { Chip } from '../../src/components/ui/Chip';
 import { Input } from '../../src/components/ui/Input';
@@ -53,7 +54,14 @@ const UNITS = [
 
 export default function AddPantryItemScreen() {
   const { addItem, scanBarcode, recognizeImage } = usePantry();
-  const params = useLocalSearchParams();
+  const { barcode, photoUri, photoBase64, detected } = useLocalSearchParams<{
+    barcode?: string;
+    photoUri?: string;
+    photoBase64?: string;
+    detected?: string;
+  }>();
+  /** The prefill runs once per arrival, never per render. */
+  const prefilled = useRef(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -72,18 +80,26 @@ export default function AddPantryItemScreen() {
     lowStockThreshold: '1',
   });
 
+  // Depends on the individual params, not the params object: expo-router hands
+  // back a fresh object every render, so `[params]` never compared equal and
+  // this effect re-ran forever — arriving from the scanner pinned the screen on
+  // its spinner, with the Save button not even rendered.
   useEffect(() => {
-    if (params.barcode) {
-      handleBarcodeData(params.barcode as string);
+    if (prefilled.current) return;
+    if (!barcode && !photoUri && !photoBase64 && !detected) return;
+    prefilled.current = true;
+
+    if (barcode) {
+      handleBarcodeData(barcode);
     }
-    if (params.photoUri || params.photoBase64) {
-      handleImageData(params.photoUri as string, params.photoBase64 as string);
+    if (photoUri || photoBase64) {
+      handleImageData(photoUri as string, photoBase64 as string);
     }
     // Items already reviewed on the scan screen — prefill the first and keep the
     // rest queued, so a multi-item scan doesn't lose everything but the head.
-    if (params.detected) {
+    if (detected) {
       try {
-        const items = JSON.parse(params.detected as string) as { name: string; category?: string }[];
+        const items = JSON.parse(detected) as { name: string; category?: string }[];
         if (items.length > 0) {
           setFormData(prev => ({
             ...prev,
@@ -96,7 +112,7 @@ export default function AddPantryItemScreen() {
         // A malformed param shouldn't block manual entry.
       }
     }
-  }, [params]);
+  }, [barcode, photoUri, photoBase64, detected]);
 
   const handleBarcodeData = async (barcode: string) => {
     setIsProcessingImage(true);
@@ -172,8 +188,11 @@ export default function AddPantryItemScreen() {
       Alert.alert('Added', 'Item added to your pantry.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    } catch {
-      Alert.alert('Error', 'Failed to add item. Please try again.');
+    } catch (error) {
+      // The real reason, not a generic one. The server rejects a past expiry
+      // date and a few other things this form can produce, and the old message
+      // hid all of it behind "Failed to add item".
+      Alert.alert('Could not add that item', errorMessage(error, 'Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -185,7 +204,7 @@ export default function AddPantryItemScreen() {
         <View style={styles.loadingContainer}>
           <LoadingSpinner size="large" />
           <Text preset="titleSm" align="center">
-            {params.barcode ? 'Looking up product' : 'Recognising food item'}
+            {barcode ? 'Looking up product' : 'Recognising food item'}
           </Text>
           <Text preset="bodyMd" align="center">
             This may take a few seconds.
@@ -220,9 +239,9 @@ export default function AddPantryItemScreen() {
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {params.photoUri && (
+          {photoUri && (
             <View style={styles.photoContainer}>
-              <Image source={{ uri: params.photoUri as string }} style={styles.photoPreview} />
+              <Image source={{ uri: photoUri }} style={styles.photoPreview} />
             </View>
           )}
 
