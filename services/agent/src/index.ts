@@ -4,8 +4,9 @@ import helmet from 'helmet';
 import { createServer } from 'http';
 import { createErrorHandler, notFoundHandler } from '@petra/service-kit';
 
-import { config, isProduction, validateConfig } from './config';
+import { config, configWarnings, isProduction, validateConfig } from './config';
 import { connectDatabase, disconnectDatabase } from './db';
+import { disconnectRedis } from './cache';
 import { setupRoutes } from './routes';
 import { warmUp } from './retrieval/embedding';
 import { logger, logRequest } from './utils/logger';
@@ -25,6 +26,9 @@ async function startServer() {
     // Fail here rather than on the first chat turn: a missing GROQ_API_KEY is a
     // broken deploy, and should look like one.
     validateConfig();
+    // Non-fatal gaps are logged once here rather than thrown: chat has to keep
+    // working without Redis and without a nutrition-database key.
+    for (const warning of configWarnings()) logger.warn(warning);
 
     const app = express();
     const server = createServer(app);
@@ -108,7 +112,7 @@ async function startServer() {
     const shutdown = async (signal: string) => {
       logger.info(`${signal} received, shutting down gracefully`);
       server.close(async () => {
-        await disconnectDatabase();
+        await Promise.all([disconnectDatabase(), disconnectRedis()]);
         logger.info('Agent stopped');
         process.exit(0);
       });

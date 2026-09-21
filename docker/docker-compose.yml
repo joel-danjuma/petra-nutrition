@@ -1,9 +1,17 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database.
+  #
+  # pgvector's image rather than plain postgres:15-alpine, because recipe
+  # embeddings live in a `vector(384)` column with an HNSW index. Retrieval used
+  # to load the whole corpus into the agent's memory and score it in
+  # JavaScript; that is untenable past a few thousand recipes, and the migration
+  # that fixed it needs `CREATE EXTENSION vector`, which the alpine image
+  # cannot satisfy. It is the same Postgres 15 otherwise — same data directory
+  # layout, so an existing volume carries over.
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: petra-postgres
     restart: unless-stopped
     environment:
@@ -107,8 +115,22 @@ services:
       GROQ_MODEL_FAST: ${GROQ_MODEL_FAST:-openai/gpt-oss-20b}
       GROQ_MODEL_SMART: ${GROQ_MODEL_SMART:-openai/gpt-oss-120b}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      # The agent's own Redis use: graph working state (TTL'd) and the
+      # nutrition-database lookup cache. Same instance the API uses — the key
+      # prefixes do not collide, and neither holds anything durable. The agent
+      # degrades to in-process memory if this is unreachable, so it is not a
+      # startup dependency in the strict sense; `depends_on` only avoids a
+      # pointless first-minute warning.
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      GRAPH_STATE_TTL_SECONDS: ${GRAPH_STATE_TTL_SECONDS:-3600}
+      # USDA FoodData Central, for raw-ingredient macros. Free key; unset means
+      # nutrition falls back to labelled low-confidence estimates.
+      FDC_API_KEY: ${FDC_API_KEY}
+      RECIPE_OVERFLOW_ENABLED: ${RECIPE_OVERFLOW_ENABLED:-false}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - petra-network

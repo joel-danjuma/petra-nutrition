@@ -1,0 +1,28 @@
+{
+  "//": [
+    "Test compilation, deliberately standalone.",
+    "",
+    "It does not extend the repo root tsconfig, which extends expo/tsconfig.base",
+    "for the mobile app's benefit. Inheriting that makes `pnpm --filter @petra/agent",
+    "test` fail outright on any machine where the Expo toolchain is not installed —",
+    "a backend test suite should not depend on a React Native toolchain being",
+    "present. The compiler options here mirror tsconfig.json's; only the",
+    "inheritance is dropped."
+  ],
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["dist", "node_modules", "src/generated"]
+}

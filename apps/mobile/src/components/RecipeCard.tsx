@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, StyleSheet, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, View, ViewStyle } from 'react-native';
 import { ChevronRight, UtensilsCrossed } from 'lucide-react-native';
 
 import { color, radius, space } from '../theme';
@@ -38,6 +38,12 @@ export interface RecipeCardProps {
   variant?: 'hero' | 'compact';
   /** "Open recipe →" affordance, used in chat. */
   showOpenAffordance?: boolean;
+  /**
+   * Mid-save. A recipe Petra composed has no row behind it until the first tap
+   * writes one, and that write is a round trip — this shows it is happening and
+   * drops `onPress` so a second tap cannot start a second write.
+   */
+  loading?: boolean;
   style?: ViewStyle;
 }
 
@@ -58,13 +64,20 @@ export function RecipeCard({
   badge,
   variant = 'hero',
   showOpenAffordance = false,
+  loading = false,
   style,
 }: RecipeCardProps) {
   const compact = variant === 'compact';
   const meta = metaLine(recipe);
 
   return (
-    <Card padded={false} onPress={onPress} style={{ ...styles.card, ...(style ?? {}) }}>
+    <Card
+      padded={false}
+      // Card renders a plain View when there is no handler, so this makes the
+      // press genuinely dead rather than merely looking disabled.
+      onPress={loading ? undefined : onPress}
+      style={{ ...styles.card, ...(style ?? {}) }}
+    >
       <View style={compact ? styles.mediaCompact : styles.media}>
         {recipe.imageUrl ? (
           <Image source={{ uri: recipe.imageUrl }} style={styles.image} resizeMode="cover" />
@@ -100,10 +113,14 @@ export function RecipeCard({
 
         {showOpenAffordance && (
           <View style={styles.open}>
-            <Text preset="caption" color={color.ink}>
-              Open recipe
+            <Text preset="caption" color={loading ? color.muted : color.ink}>
+              {loading ? 'Saving to your recipes' : 'Open recipe'}
             </Text>
-            <ChevronRight size={14} color={color.ink} strokeWidth={1.85} />
+            {loading ? (
+              <ActivityIndicator size="small" color={color.muted} />
+            ) : (
+              <ChevronRight size={14} color={color.ink} strokeWidth={1.85} />
+            )}
           </View>
         )}
       </View>

@@ -2,7 +2,7 @@ export * from './auth';
 export * from './pantry';
 
 import React, { createContext, useContext, useMemo, ReactNode } from 'react';
-import { ApiClient, PetraApiEndpoints } from '../api';
+import { ApiClient, PetraApiEndpoints, setApiEndpoints } from '../api';
 import { useAuthStore } from './auth';
 
 interface StoreProviderProps {
@@ -29,8 +29,11 @@ export const useApi = () => {
 
 export const initializeStores = (apiClient: ApiClient) => {
   const api = new PetraApiEndpoints(apiClient);
-  // Inject API into Zustand store so auth actions (login/register/etc.) can use it
-  useAuthStore.setState({ api } as any);
+  // Registered once for every store, rather than injected into one of them.
+  // The old `useAuthStore.setState({ api })` reached auth and nothing else, so
+  // the pantry store threw before its first request and the pantry looked
+  // permanently empty.
+  setApiEndpoints(api);
 
   // The store is the single source of truth for the token; the HTTP client just
   // mirrors it. Covers login, logout and — crucially — rehydrating a persisted

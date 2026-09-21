@@ -25,6 +25,7 @@
  */
 
 import { Difficulty, PrismaClient } from '@prisma/client';
+import { parseMeasure } from '@petra/food-measures';
 
 const prisma = new PrismaClient();
 
@@ -45,72 +46,14 @@ interface RawMeal {
 
 /* ------------------------------------------------------------------ parsing */
 
-const VULGAR: Record<string, number> = {
-  '½': 0.5, '⅓': 1 / 3, '⅔': 2 / 3, '¼': 0.25, '¾': 0.75,
-  '⅕': 0.2, '⅙': 1 / 6, '⅛': 0.125, '⅜': 0.375, '⅝': 0.625, '⅞': 0.875,
-};
-
 /**
- * TheMealDB measures are free text — "800g", "1 clove", "2 tablespoons",
- * "1 small finely diced", "½ cup", "1 1/2 tbsp", "Dash". Pull out a number and
- * a unit where we can; anything left over becomes a note rather than being
- * silently dropped.
+ * Measures are free text — "800g", "1 clove", "2 tablespoons",
+ * "1 small finely diced", "½ cup", "1 1/2 tbsp", "Dash". The parser lives in
+ * @petra/food-measures rather than here because the agent's nutrition node has
+ * to read back exactly what this importer wrote: two copies of the logic means
+ * the recipe screen and the macro panel can disagree about the same dish.
  */
-export function parseMeasure(raw: string): { amount: number; unit: string; notes?: string } {
-  const text = (raw || '').trim();
-  if (!text) return { amount: 1, unit: '' };
-
-  let rest = text;
-  let amount = 0;
-  let matched = false;
-
-  // Leading mixed number / fraction / decimal / vulgar fraction.
-  const mixed = rest.match(/^(\d+)\s+(\d+)\/(\d+)\s*/);
-  const frac = rest.match(/^(\d+)\/(\d+)\s*/);
-  const dec = rest.match(/^(\d+(?:\.\d+)?)\s*/);
-  const vulgar = rest.match(/^([½⅓⅔¼¾⅕⅙⅛⅜⅝⅞])\s*/);
-
-  if (mixed) {
-    amount = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
-    rest = rest.slice(mixed[0].length);
-    matched = true;
-  } else if (frac) {
-    amount = Number(frac[1]) / Number(frac[2]);
-    rest = rest.slice(frac[0].length);
-    matched = true;
-  } else if (dec) {
-    amount = Number(dec[1]);
-    rest = rest.slice(dec[0].length);
-    matched = true;
-    // "800g" — unit glued to the number.
-    const glued = rest.match(/^(g|kg|ml|l|oz|lb|lbs)\b/i);
-    if (glued) {
-      return { amount, unit: glued[1].toLowerCase() };
-    }
-  } else if (vulgar) {
-    amount = VULGAR[vulgar[1]];
-    rest = rest.slice(vulgar[0].length);
-    matched = true;
-  }
-
-  if (!matched) {
-    // "Dash", "To taste", "Pinch" — a qualitative measure, not a quantity.
-    return { amount: 1, unit: '', notes: text };
-  }
-
-  rest = rest.trim();
-  if (!rest) return { amount, unit: '' };
-
-  // First token is the unit if it looks like one; the remainder is preparation
-  // detail ("1 small finely diced" → 1, unit "", note "small finely diced").
-  const UNITS = /^(g|kg|ml|l|litre|litres|oz|lb|lbs|cup|cups|tbsp|tbs|tablespoon|tablespoons|tsp|teaspoon|teaspoons|clove|cloves|can|cans|tin|tins|slice|slices|sprig|sprigs|pinch|handful|bunch|packet|pack|sheet|sheets|stick|sticks|piece|pieces)\b/i;
-  const unitMatch = rest.match(UNITS);
-  if (unitMatch) {
-    const notes = rest.slice(unitMatch[0].length).trim();
-    return { amount, unit: unitMatch[1].toLowerCase(), ...(notes ? { notes } : {}) };
-  }
-  return { amount, unit: '', notes: rest };
-}
+export { parseMeasure } from '@petra/food-measures';
 
 /**
  * Instructions arrive as one blob. Most are paragraph-separated; some are

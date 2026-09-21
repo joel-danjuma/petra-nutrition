@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { saveGeneratedRecipeRequestSchema } from '@petra/agent-contract';
 import { RecipeService } from '../services/recipe';
 import { agentClient } from '../services/agent-client';
 import { NotFoundError, ValidationError } from '../middleware/error';
@@ -96,6 +97,62 @@ export class RecipeController {
       logger.error('Failed to create recipe:', error);
       throw error;
     }
+  }
+
+  /**
+   * Save a recipe the assistant composed.
+   *
+   * Generated recipes are ephemeral by default: the chat shows one, the user
+   * cooks from it, and nothing is written. Persisting every draft would fill
+   * the library with dishes nobody chose to keep and make the user's own
+   * recipes harder to find among them. So this endpoint exists, and it is only
+   * ever reached by an explicit action.
+   *
+   * The payload is the `generatedRecipe` block from the chat response, echoed
+   * back. Validated here against the contract's own schema rather than trusted:
+   * it arrives over the public API, so a client could send anything, and the
+   * agent's validation happened on the other side of a network hop to a
+   * different process.
+   *
+   * Embedding is asked of the agent afterwards and is deliberately not allowed
+   * to fail the request — the recipe is already saved, and a missing vector
+   * only means it will not surface from a description until the next embed run.
+   */
+  async saveGenerated(req: Request, res: Response) {
+    const userId = req.user!.id;
+
+    const parsed = saveGeneratedRecipeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid generated recipe', parsed.error.flatten());
+    }
+
+    const { recipe, nutrition } = parsed.data;
+
+    const saved = await this.recipeService.createFromGeneration(userId, recipe, nutrition);
+
+    logger.info('Generated recipe saved', {
+      userId,
+      recipeId: saved.id,
+      inspiredBy: recipe.inspiredBy,
+      hasNutrition: !!nutrition,
+    });
+
+    let embedded = false;
+    try {
+      const result = await agentClient.rebuildIndex({ recipeIds: [saved.id] });
+      embedded = result.embedded > 0;
+    } catch (error) {
+      logger.warn('Saved the recipe but could not embed it; a later embed run will', {
+        recipeId: saved.id,
+        error: (error as Error)?.message,
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      data: saved,
+      metadata: { timestamp: new Date().toISOString(), embedded },
+    });
   }
 
   async update(req: Request, res: Response) {

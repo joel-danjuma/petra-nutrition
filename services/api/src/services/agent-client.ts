@@ -8,6 +8,8 @@ import {
   type CookingTipsRequest,
   type EnrichRecipeRequest,
   type EnrichRecipeResponse,
+  type IndexRebuildRequest,
+  type IndexRebuildResponse,
   type GenerateMealPlanRequest,
   type GenerateRecipeRequest,
   type RetrieveRequest,
@@ -198,6 +200,21 @@ class AgentClient {
 
   recognizeImage(request: VisionRequest): Promise<VisionResponse> {
     return this.post('/v1/vision/pantry-items', request, TIMEOUTS.vision);
+  }
+
+  /**
+   * Ask the agent to refresh its index, optionally embedding specific recipes.
+   *
+   * Called after a recipe is written — a saved generation, or an import. The
+   * agent owns the embedding model and the `recipe_embeddings` table, so this
+   * is the only way the API can get a new recipe into semantic search.
+   *
+   * On the `retrieve` timeout rather than `chat`: embedding a handful of
+   * recipes is a short CPU job, and a caller waiting on it has already
+   * persisted what matters.
+   */
+  rebuildIndex(request: IndexRebuildRequest = { recipeIds: [] }): Promise<IndexRebuildResponse> {
+    return this.post('/v1/index/rebuild', request, TIMEOUTS.retrieve);
   }
 }
 

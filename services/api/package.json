@@ -16,13 +16,15 @@
     "db:studio": "npx prisma studio",
     "db:seed": "tsx src/database/seed.ts",
     "db:import-recipes": "tsx src/scripts/import-recipes.ts",
-    "db:enrich-recipes": "tsx src/scripts/enrich-recipes.ts"
+    "db:enrich-recipes": "tsx src/scripts/enrich-recipes.ts",
+    "db:import-dataset": "tsx src/scripts/import-dataset.ts"
   },
   "prisma": {
     "seed": "tsx src/database/seed.ts"
   },
   "dependencies": {
     "@petra/agent-contract": "workspace:*",
+    "@petra/food-measures": "workspace:*",
     "@petra/service-kit": "workspace:*",
     "@petra/shared": "workspace:*",
     "@prisma/client": "^5.2.0",

@@ -6,6 +6,7 @@ import {
   enrichRecipeRequestSchema,
   generateMealPlanRequestSchema,
   generateRecipeRequestSchema,
+  indexRebuildRequestSchema,
   retrieveRequestSchema,
   visionRequestSchema,
 } from '@petra/agent-contract';
@@ -14,6 +15,7 @@ import { ValidationError, asyncHandler } from '@petra/service-kit';
 import { aiChatService, runChatTurn } from '../orchestrator';
 import { enrichRecipe } from '../llm/enrich';
 import { retrievalService } from '../retrieval';
+import { embedRecipesByIds } from '../retrieval/store';
 import { ImageRecognitionService } from '../vision';
 import { internalAuth } from '../middleware/internal-auth';
 import { streamChat } from './stream';
@@ -156,12 +158,43 @@ export const setupRoutes = (app: Application): void => {
     })
   );
 
-  /** Rebuild the semantic index. Also available as `pnpm --filter @petra/agent embed`. */
+  /**
+   * Rebuild the semantic index. Also available as `pnpm --filter @petra/agent embed`.
+   *
+   * With `recipeIds` it embeds those recipes, which is what the API calls after
+   * persisting a saved generation — the agent owns the embedding model, so the
+   * API cannot do it itself and asks. With no ids it just drops the agent's
+   * cached view of what the database can do, which is what a deploy wants after
+   * a migration.
+   *
+   * Embedding failure does not fail the request. The recipe is already
+   * persisted by the time this runs, and a missing vector is a gap a later
+   * `pnpm embed` closes — losing the user's saved dish over a cold model would
+   * be a much worse trade.
+   */
   router.post(
     '/index/rebuild',
-    asyncHandler(async (_req: Request, res: Response) => {
+    asyncHandler(async (req: Request, res: Response) => {
+      const { recipeIds } = parse<import('@petra/agent-contract').IndexRebuildRequest>(
+        indexRebuildRequestSchema,
+        req.body ?? {}
+      );
+
       retrievalService.invalidate();
-      res.json({ success: true, data: { invalidated: true } });
+
+      let embedded = 0;
+      if (recipeIds.length) {
+        try {
+          embedded = await embedRecipesByIds(recipeIds);
+        } catch (error) {
+          logger.warn('Embedding on rebuild failed; the recipes stay unembedded', {
+            recipeIds: recipeIds.length,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      res.json({ success: true, data: { invalidated: true, embedded } });
     })
   );
 

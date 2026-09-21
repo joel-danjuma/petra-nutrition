@@ -357,7 +357,9 @@ const styles = StyleSheet.create({
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    // absoluteFillObject was dropped from React Native's types in 0.86;
+    // absoluteFill is the same frozen object and is still public.
+    ...StyleSheet.absoluteFill,
     backgroundColor: color.surfaceDark,
     justifyContent: 'center',
     alignItems: 'center',

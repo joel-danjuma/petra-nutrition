@@ -1,5 +1,6 @@
-import { PrismaClient } from '../generated/prisma';
+import { Prisma, PrismaClient } from '../generated/prisma';
 import { config } from '../config';
+import { EMBEDDING_DIMS } from '../retrieval/embedding';
 import { logger } from '../utils/logger';
 
 /**
@@ -36,9 +37,40 @@ export const verifyReadModel = async (): Promise<number> => {
       servings: true,
       dietaryTags: true,
       ingredients: { select: { name: true }, take: 1 },
-      embedding: { select: { vector: true, model: true } },
+      embedding: { select: { model: true } },
     },
   });
+
+  // The embedding vector has to be probed too — it is what every semantic
+  // query orders by, and a migration that has not reached this database would
+  // otherwise surface as a query error during a user's chat turn rather than as
+  // a failed deploy.
+  //
+  // `vector_dims` rather than selecting the column: Prisma cannot deserialise a
+  // `vector` result at all, so `SELECT embedding` fails even when the column is
+  // perfectly healthy. Going through the function instead proves three things
+  // at once — the column exists, the extension is loaded, and the stored
+  // dimension is the one the model produces — and returns a plain integer.
+  //
+  // An empty table returns no rows and that is fine: the column still has to
+  // exist for the query to plan at all.
+  const [dims] = await prisma.$queryRaw<{ dims: number }[]>(
+    Prisma.sql`
+      SELECT vector_dims(embedding) AS dims
+      FROM recipe_embeddings
+      WHERE embedding IS NOT NULL
+      LIMIT 1
+    `
+  );
+
+  if (dims && dims.dims !== EMBEDDING_DIMS) {
+    throw new Error(
+      `recipe_embeddings.embedding holds ${dims.dims} dimensions but the ` +
+        `embedding model produces ${EMBEDDING_DIMS}. Vectors from different ` +
+        `models are not comparable — rebuild with ` +
+        '`pnpm --filter @petra/agent run embed -- --force`.'
+    );
+  }
 
   return prisma.recipe.count({ where: { isPublic: true } });
 };

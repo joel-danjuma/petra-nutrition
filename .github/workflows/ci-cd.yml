@@ -18,7 +18,10 @@ jobs:
     
     services:
       postgres:
-        image: postgres:15
+        # pgvector's image, not plain postgres:15. Recipe embeddings are a
+        # vector(384) column with an HNSW index, so `prisma migrate deploy`
+        # below runs `CREATE EXTENSION vector` and fails without it.
+        image: pgvector/pgvector:pg15
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: petra_ai_test
@@ -100,6 +103,12 @@ jobs:
 
     - name: Run agent tests
       run: pnpm --filter @petra/agent test
+
+    # Both services read back what the other wrote — the importer writes
+    # amount/unit and the nutrition node turns them into grams — so a
+    # regression here makes the recipe screen and the macro panel disagree.
+    - name: Run food-measures tests
+      run: pnpm --filter @petra/food-measures test
 
     - name: Run shared package tests
       run: pnpm --filter @petra/shared test
