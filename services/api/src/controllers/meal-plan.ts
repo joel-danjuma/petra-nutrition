@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { MealPlanService } from '../services/meal-plan';
 import { agentClient } from '../services/agent-client';
+import { agentContext, agentUser } from '../services/agent-context';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
@@ -136,17 +137,12 @@ export class MealPlanController {
 
       const aiResponse = await agentClient.chat({
         messages,
-        user: {
-          id: userId,
-          subscriptionTier: isPremium ? 'PREMIUM' : 'FREE',
-        },
-        context: {
-          currentPantryItems: pantryItems ?? [],
-          pantryNames: pantryItems ?? [],
-          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
-          healthGoals: preferences?.healthGoals ?? [],
-          allergies: [],
-        },
+        user: agentUser(req.user!),
+        context: await agentContext.forUser(userId, {
+          pantry: pantryItems,
+          dietaryRestrictions: preferences?.dietaryRestrictions,
+          healthGoals: preferences?.healthGoals,
+        }),
         options: { advancedModel: days > 3 },
       });
 
@@ -181,18 +177,11 @@ export class MealPlanController {
 
       const aiResponse = await agentClient.chat({
         messages,
-        user: {
-          id: userId,
-          subscriptionTier:
-            req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-        },
-        context: {
-          currentPantryItems: pantryItems ?? [],
-          pantryNames: pantryItems ?? [],
-          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
-          healthGoals: [],
-          allergies: [],
-        },
+        user: agentUser(req.user!),
+        context: await agentContext.forUser(userId, {
+          pantry: pantryItems,
+          dietaryRestrictions: preferences?.dietaryRestrictions,
+        }),
       });
 
       res.json({

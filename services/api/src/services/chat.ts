@@ -228,16 +228,12 @@ export class ChatService {
     }
   }
 
-  async getUserProfile(userId: string) {
-    try {
-      return await prisma.user.findUnique({
-        where: { id: userId },
-        include: { profile: true },
-      });
-    } catch (error) {
-      logger.error('Failed to get user profile:', error);
-      return null;
-    }
+  /** Ownership check without loading the transcript `getSession` returns. */
+  async isOwner(sessionId: string, userId: string): Promise<boolean> {
+    const count = await prisma.chatSession.count({
+      where: { id: sessionId, userId },
+    });
+    return count > 0;
   }
 
   // Analytics methods

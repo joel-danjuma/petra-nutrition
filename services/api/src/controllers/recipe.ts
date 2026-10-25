@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { RecipeService } from '../services/recipe';
 import { agentClient } from '../services/agent-client';
+import { agentContext, agentUser } from '../services/agent-context';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
@@ -164,18 +165,13 @@ export class RecipeController {
 
       const aiResponse = await agentClient.chat({
         messages,
-        user: {
-          id: userId,
-          subscriptionTier:
-            req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-        },
-        context: {
-          currentPantryItems: [],
-          pantryNames: [],
-          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
-          healthGoals: preferences?.healthGoals ?? [],
-          allergies: [],
-        },
+        user: agentUser(req.user!),
+        // No pantry: the prompt names the dish, not what is in the cupboard.
+        context: await agentContext.forUser(userId, {
+          pantry: [],
+          dietaryRestrictions: preferences?.dietaryRestrictions,
+          healthGoals: preferences?.healthGoals,
+        }),
         // Writing a whole recipe from a bare prompt is the kind of ask the
         // large model is actually for.
         options: { advancedModel: true },
