@@ -21,10 +21,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   color,
+  fluid,
   fontSize,
   layout,
   lineHeight,
+  onDark,
   radius,
+  semantic,
   shadow,
   space,
   weight,
@@ -115,6 +118,10 @@ lines.push(
   '  --color-primary: var(--petra-ink);',
   '  --color-primary-active: var(--petra-primary-active);',
   '  --color-on-primary: var(--petra-white);',
+  '  --color-on-dark: var(--petra-white);',
+  '  --text-ink: var(--petra-ink);',
+  '  --text-body: var(--petra-body);',
+  '  --text-muted: var(--petra-muted);',
   '  --color-link: var(--petra-link);',
   '  --color-link-active: var(--petra-link-active);',
   '  --color-success: var(--petra-success);',
@@ -129,6 +136,17 @@ lines.push(
   '  --signature-coral: var(--petra-coral);',
   '  --signature-forest: var(--petra-forest);',
   '  --signature-cream: var(--petra-cream);',
+  '',
+  '  /* ---- app semantic roles (tokens/app-semantic.css) ---- */',
+  `  --app-warning-surface: ${semantic.warningSurface};`,
+  `  --app-warning-ink: ${semantic.warningInk};`,
+  `  --app-danger: ${semantic.danger};`,
+  `  --app-on-danger: ${semantic.dangerOn};`,
+  `  --app-success-surface: ${semantic.successSurface};`,
+  `  --app-on-success: ${semantic.successOn};`,
+  `  --app-on-dark-muted: ${onDark.muted};`,
+  `  --app-on-dark-surface: ${onDark.surface};`,
+  `  --app-on-dark-hairline: ${onDark.hairline};`,
   '',
   '  /* ---- Tailwind roles (bare HSL triples for hsl(var(--x))) ---- */',
 );
@@ -147,6 +165,11 @@ for (const [name, value] of Object.entries(space)) {
 
 for (const [name, value] of Object.entries(layout)) {
   lines.push(`  --${kebab(name)}: ${value}px;`);
+}
+
+lines.push('', '  /* ---- fluid scale (web only; one 900px breakpoint, the rest is clamp) ---- */');
+for (const [name, value] of Object.entries(fluid)) {
+  lines.push(`  --fluid-${kebab(name)}: ${value};`);
 }
 
 lines.push('', '  /* ---- radius (pill is pricing-only) ---- */');

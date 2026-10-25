@@ -13,6 +13,13 @@ const nextConfig = {
     NEXT_PUBLIC_WEB_URL: process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000',
   },
   transpilePackages: ['@petra/shared'],
+  async redirects() {
+    return [
+      // The redesign renamed Features to Platform. Permanent, so search
+      // engines and old links move over.
+      { source: '/features', destination: '/platform', permanent: true },
+    ];
+  },
 };
 
 module.exports = nextConfig;

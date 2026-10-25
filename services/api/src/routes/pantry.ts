@@ -97,6 +97,12 @@ router.post('/scan/image',
 );
 
 // Upload and recognize image
+router.post('/scan/receipt',
+  upload.single('image'),
+  userRateLimit(10, 60000),
+  asyncHandler(pantryController.readReceipt.bind(pantryController))
+);
+
 router.post('/scan/upload',
   upload.single('image'),
   userRateLimit(10, 60000),

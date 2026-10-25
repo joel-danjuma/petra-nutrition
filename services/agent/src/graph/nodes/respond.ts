@@ -197,7 +197,20 @@ export async function respond(state: GraphStateType): Promise<GraphUpdate> {
     // the matcher needs work rather than this backstop.
     const shortlist = context.retrievedRecipes ?? [];
 
-    if (!parsed.recipeId && !state.draft && state.retrievalSufficient && shortlist.length) {
+    //
+    // Not gated on `retrievalSufficient` for food turns. A compose that failed
+    // twice falls through to here with the shortlist still in the prompt, and
+    // the model duly recommends one of those recipes — so leaving the card off
+    // meant a recipe request answered with prose and nothing to cook from. The
+    // shortlist is already allergen-filtered, so the top of it is a safe card.
+    const foodTurn = state.intent === 'compose' || state.intent === 'search';
+
+    if (
+      !parsed.recipeId &&
+      !state.draft &&
+      (state.retrievalSufficient || foodTurn) &&
+      shortlist.length
+    ) {
       parsed.recipeId = shortlist[0].id;
       parsed.type = 'recipe_suggestion';
       logger.warn('Attached the top candidate; the reply named none of them', {

@@ -14,6 +14,30 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Headings wrap to balanced lines; long body copy avoids orphans. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+
+  /* The system scopes motion out. Honour the OS setting for what little
+     there is (cook-mode tap flash, sheet transitions). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Emphasis comes from size and colour, never from bold weight. Display type
@@ -96,6 +120,47 @@
     color: var(--petra-ink);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
+  }
+
+  /* Long-form legal text (privacy, terms). The typography plugin is not
+     installed, so this is the whole of it — built from tokens. */
+  .legal-prose {
+    color: var(--text-body);
+    font-size: var(--text-body-lg);
+    line-height: 1.65;
+  }
+  .legal-prose h1 {
+    margin: 0;
+    color: var(--text-ink);
+    font-size: var(--fluid-text-display);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+  }
+  .legal-prose h2 {
+    margin: var(--space-xl) 0 0;
+    color: var(--text-ink);
+    font-size: var(--text-title-md);
+    line-height: var(--lh-title);
+  }
+  .legal-prose p,
+  .legal-prose ul {
+    margin: var(--space-sm) 0 0;
+  }
+  .legal-prose ul {
+    padding-left: 1.25em;
+  }
+  .legal-prose li + li {
+    margin-top: var(--space-xxs);
+  }
+  .legal-prose a {
+    color: var(--color-link);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .legal-prose .legal-prose__meta {
+    margin-top: var(--space-md);
+    color: var(--text-muted);
+    font-size: var(--text-label-sm);
   }
 
   /* 96px is the universal rhythm between editorial bands — the single value
@@ -351,5 +416,30 @@
 
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Fixed bars sit flush with the bottom edge on notched phones (the root
+     viewport is viewport-fit=cover) and pad themselves clear of the home
+     indicator. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Space a page leaves at its foot for the fixed app tab bar below 900px. */
+  .pb-tabbar {
+    padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* A row that scrolls sideways inside itself — chips, filters — so the page
+     never does. Bleeds to the gutter so the last chip isn't clipped mid-air. */
+  .scroll-row {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-row::-webkit-scrollbar {
+    display: none;
   }
 }

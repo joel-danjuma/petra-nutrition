@@ -4,7 +4,7 @@ import {
   CompleteOnboarding,
   Recipe, CreateRecipe, UpdateRecipe, RecipeSearch, RecipeSearchResponse, RecipeGenerationRequest,
   PantryItem, CreatePantryItem, UpdatePantryItem, PantrySearch, PantrySearchResponse, PantryStats,
-  BarcodeRecognition, ImageRecognition, RecognitionResult,
+  BarcodeRecognition, ImageRecognition, RecognitionResult, ReceiptResult,
   MealPlan, CreateMealPlan, UpdateMealPlan, MealPlanSearch, MealPlanSearchResponse,
   MealPlanGenerationRequest, QuickMealSuggestion,
   ShoppingList, CreateShoppingList, UpdateShoppingList, ShoppingListSearch, ShoppingListSearchResponse,
@@ -123,6 +123,10 @@ export class PetraApiEndpoints {
 
     uploadImage: (file: File, context?: string): Promise<ApiResponse<RecognitionResult>> =>
       this.client.uploadFile('/pantry/scan/upload', file, 'image', { context }),
+
+    /** Read a receipt photo into items to review. Saves nothing. */
+    readReceipt: (file: File): Promise<ApiResponse<ReceiptResult>> =>
+      this.client.uploadFile('/pantry/scan/receipt', file, 'image'),
 
     bulkUpdate: (items: Array<{ id: string; updates: UpdatePantryItem }>): Promise<ApiResponse<PantryItem[]>> =>
       this.client.patch('/pantry/bulk', { items }),

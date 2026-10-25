@@ -9,6 +9,7 @@ import {
   indexRebuildRequestSchema,
   retrieveRequestSchema,
   visionRequestSchema,
+  receiptRequestSchema,
 } from '@petra/agent-contract';
 import { ValidationError, asyncHandler } from '@petra/service-kit';
 
@@ -143,6 +144,17 @@ export const setupRoutes = (app: Application): void => {
         req.body
       );
       res.json({ success: true, data: await aiChatService.analyzeNutrition(foodItems) });
+    })
+  );
+
+  router.post(
+    '/vision/receipt',
+    asyncHandler(async (req: Request, res: Response) => {
+      const { image } = parse<import('@petra/agent-contract').ReceiptRequest>(
+        receiptRequestSchema,
+        req.body
+      );
+      res.json({ success: true, data: await visionService.readReceipt(image) });
     })
   );
 

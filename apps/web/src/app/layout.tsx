@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import { ApiProvider } from '@/components/providers/api-provider';
@@ -23,13 +24,19 @@ const inter = Inter({
   display: 'swap',
 });
 
+const TITLE = 'Petra — your pantry, turned into tonight\'s recipe';
+const DESCRIPTION =
+  'Petra keeps track of everything in your fridge, freezer and cupboard, ' +
+  'then generates a recipe from it in seconds — sized for tonight, inside ' +
+  'your diet, with nothing to buy.';
+
 export const metadata: Metadata = {
-  title: 'Petra AI - Your Intelligent Kitchen Assistant',
-  description: 'Discover recipes, plan meals, and manage your pantry with AI-powered assistance.',
-  keywords: ['AI', 'cooking', 'recipes', 'meal planning', 'pantry management', 'nutrition'],
-  authors: [{ name: 'Petra AI Team' }],
-  creator: 'Petra AI',
-  publisher: 'Petra AI',
+  title: { default: TITLE, template: '%s · Petra' },
+  description: DESCRIPTION,
+  keywords: ['recipes', 'pantry', 'meal planning', 'food waste', 'cooking'],
+  applicationName: 'Petra',
+  creator: 'Petra',
+  publisher: 'Petra',
   formatDetection: {
     email: false,
     address: false,
@@ -38,24 +45,17 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000'),
   openGraph: {
     type: 'website',
-    locale: 'en_US',
+    locale: 'en_GB',
     url: '/',
-    title: 'Petra AI - Your Intelligent Kitchen Assistant',
-    description: 'Discover recipes, plan meals, and manage your pantry with AI-powered assistance.',
-    siteName: 'Petra AI',
-    images: [
-      {
-        url: '/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'Petra AI - Your Intelligent Kitchen Assistant',
-      },
-    ],
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: 'Petra',
+    images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: TITLE }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Petra AI - Your Intelligent Kitchen Assistant',
-    description: 'Discover recipes, plan meals, and manage your pantry with AI-powered assistance.',
+    title: TITLE,
+    description: DESCRIPTION,
     images: ['/og-image.jpg'],
   },
   robots: {
@@ -69,9 +69,6 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
-  verification: {
-    google: 'your-google-verification-code',
-  },
 };
 
 // White canvas only — the design system documents no dark palette.
@@ -80,13 +77,19 @@ export const metadata: Metadata = {
 // Server Component can serialise — it cannot read a CSS custom property, and
 // importing the token module here would pull the client-only store barrel into
 // the server build. It mirrors `--petra-canvas` in src/styles/tokens.css.
-// eslint-disable-next-line no-restricted-syntax
-export const viewport: Viewport = { colorScheme: 'light', themeColor: '#ffffff' };
+export const viewport: Viewport = {
+  colorScheme: 'light',
+  // eslint-disable-next-line no-restricted-syntax
+  themeColor: '#ffffff',
+  // Lets the fixed tab bar and sticky CTA reach the bottom edge on notched
+  // phones; they pad themselves with env(safe-area-inset-bottom).
+  viewportFit: 'cover',
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${inter.variable}`}>

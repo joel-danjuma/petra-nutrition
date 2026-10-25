@@ -1,4 +1,6 @@
 import { prisma } from '../database';
+import { describeQuantity, findInPantry } from './pantry-match';
+import { combine, dedupeItems, lineKey, mergeInto } from './shopping-merge';
 import { ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
@@ -83,7 +85,8 @@ export class ShoppingListService {
       return await prisma.shoppingList.create({
         data: {
           ...listData,
-          items: items?.length ? { create: items.map(coerceItemEnums) } : undefined,
+          // One row per item, even if the caller sent the same thing twice.
+          items: items?.length ? { create: dedupeItems(items).map(coerceItemEnums) } : undefined,
         },
         include: {
           items: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
@@ -143,18 +146,17 @@ export class ShoppingListService {
 
       if (!mealPlan) return null;
 
-      // Gather all ingredients from meal plan recipes
-      const ingredientMap = new Map<string, any>();
-
+      // Gather every ingredient line, grouped by what the item *is* rather
+      // than how each recipe spelled it, then total each group once — the
+      // same milk in ml, g and cups becomes one line.
+      const lines = new Map<string, any[]>();
       for (const meal of mealPlan.meals) {
         if (!meal.recipe) continue;
         for (const ingredient of meal.recipe.ingredients) {
-          const key = `${ingredient.name.toLowerCase()}_${ingredient.unit}`;
-          if (ingredientMap.has(key)) {
-            const existing = ingredientMap.get(key);
-            existing.quantity += ingredient.amount * meal.servings;
-          } else {
-            ingredientMap.set(key, {
+          const key = lineKey(ingredient);
+          lines.set(key, [
+            ...(lines.get(key) ?? []),
+            {
               name: ingredient.name,
               quantity: ingredient.amount * meal.servings,
               unit: ingredient.unit,
@@ -163,27 +165,38 @@ export class ShoppingListService {
               category: 'OTHER',
               priority: 'MEDIUM',
               isCompleted: false,
-            });
-          }
+            },
+          ]);
         }
       }
-
-      // Cross-reference with pantry to remove already stocked items
-      const pantryItems = await prisma.pantryItem.findMany({
-        where: { userId },
-        select: { name: true, quantity: true, unit: true },
-      });
-
-      const pantryMap = new Map<string, number>(
-        pantryItems.map(p => [p.name.toLowerCase(), p.quantity])
+      const ingredientMap = new Map(
+        [...lines].map(([key, group]) => [key, group.length === 1 ? group[0] : combine(group)])
       );
 
+      // Cross-reference with the pantry. Anything it already covers is left
+      // off the list but remembered, so the list can say why ("Skipped —
+      // already in your kitchen") instead of silently being shorter.
+      const pantryItems = await prisma.pantryItem.findMany({
+        where: { userId },
+        select: { name: true, quantity: true, unit: true, location: true },
+      });
+
       const shoppingItems = [];
+      const skippedItems: Array<{ name: string; have: string; location: string }> = [];
       for (const [, item] of ingredientMap) {
-        const inPantry = pantryMap.get(item.name.toLowerCase()) ?? 0;
+        const stocked = findInPantry(item.name, pantryItems);
+        // Same arithmetic as before this change (quantities compared as plain
+        // numbers, units notwithstanding); only the matching got smarter.
+        const inPantry = stocked?.quantity ?? 0;
         const needed = item.quantity - inPantry;
         if (needed > 0) {
           shoppingItems.push({ ...item, quantity: needed });
+        } else if (stocked) {
+          skippedItems.push({
+            name: item.name,
+            have: describeQuantity(stocked),
+            location: stocked.location,
+          });
         }
       }
 
@@ -193,6 +206,7 @@ export class ShoppingListService {
           mealPlanId,
           name: name || `Shopping list for ${mealPlan.name}`,
           items: shoppingItems.length ? { create: shoppingItems } : undefined,
+          skippedItems: skippedItems.length ? skippedItems : undefined,
         },
         include: {
           items: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
@@ -213,7 +227,7 @@ export class ShoppingListService {
     try {
       const existing = await prisma.shoppingList.findFirst({
         where: { id, userId },
-        include: { items: { select: { id: true } } },
+        include: { items: true },
       });
       if (!existing) return null;
 
@@ -228,13 +242,40 @@ export class ShoppingListService {
         );
       }
 
-      await Promise.all(
-        items.map(item =>
-          item.id
-            ? prisma.shoppingListItem.update({ where: { id: item.id }, data: coerceItemEnums(item) })
-            : prisma.shoppingListItem.create({ data: { ...coerceItemEnums(item), shoppingListId: id } })
-        )
-      );
+      // A new item that is already on the list does not become a second row:
+      // it tops up the one that is there (and un-ticks it — it is needed
+      // again). New items in the same request are collapsed first, so "add
+      // all missing ingredients" from two recipes cannot duplicate either.
+      const onList = new Map(existing.items.map(item => [lineKey(item), item]));
+      const updates = items.filter(item => item.id);
+      const creates: any[] = [];
+
+      for (const item of dedupeItems(items.filter(item => !item.id))) {
+        const match = onList.get(lineKey(item));
+        if (match) {
+          const merged = mergeInto(match, item);
+          updates.push({
+            id: match.id,
+            quantity: merged.quantity,
+            unit: merged.unit,
+            recipeName: merged.recipeName,
+            notes: merged.notes,
+            isCompleted: false,
+          });
+        } else {
+          creates.push(item);
+        }
+      }
+
+      await Promise.all([
+        ...updates.map(item => {
+          const { id: itemId, ...data } = item;
+          return prisma.shoppingListItem.update({ where: { id: itemId }, data: coerceItemEnums(data) });
+        }),
+        ...creates.map(item =>
+          prisma.shoppingListItem.create({ data: { ...coerceItemEnums(item), shoppingListId: id } })
+        ),
+      ]);
 
       return this.getById(id, userId);
     } catch (error) {

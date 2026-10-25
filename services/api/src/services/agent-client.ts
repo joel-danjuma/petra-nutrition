@@ -14,6 +14,8 @@ import {
   type GenerateRecipeRequest,
   type RetrieveRequest,
   type RetrievedRecipe,
+  type ReceiptRequest,
+  type ReceiptResponse,
   type VisionRequest,
   type VisionResponse,
 } from '@petra/agent-contract';
@@ -200,6 +202,11 @@ class AgentClient {
 
   recognizeImage(request: VisionRequest): Promise<VisionResponse> {
     return this.post('/v1/vision/pantry-items', request, TIMEOUTS.vision);
+  }
+
+  /** Read a grocery receipt into pantry items, for the user to review. */
+  readReceipt(request: ReceiptRequest): Promise<ReceiptResponse> {
+    return this.post('/v1/vision/receipt', request, TIMEOUTS.vision);
   }
 
   /**

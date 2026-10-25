@@ -1,5 +1,6 @@
 import { prisma } from '../database';
 import { logger } from '../utils/logger';
+import { startOfMonth, summariseMonth } from './waste-month';
 
 // Rough blended average grocery cost per gram (GBP), used only as an
 // approximation for "value saved" — there is no per-item pricing data
@@ -69,20 +70,22 @@ export class AnalyticsService {
     }
   }
 
-  async getWasteSummary(userId: string) {
+  async getWasteSummary(userId: string, now: Date = new Date()) {
     try {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+      const monthStart = startOfMonth(now);
+      // The over-bought window looks back 30 days, which can reach into last
+      // month; fetch whichever start is earlier.
+      const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const since = windowStart < monthStart ? windowStart : monthStart;
 
-      const [usedLogs, thisMonthUsedLogs, wastedByCategory] = await Promise.all([
+      const [usedLogs, recentLogs, wastedByCategory, recipesCooked] = await Promise.all([
         prisma.pantryWasteLog.findMany({
           where: { userId, action: 'USED' },
           select: { estimatedWeightGrams: true, estimatedValue: true },
         }),
         prisma.pantryWasteLog.findMany({
-          where: { userId, action: 'USED', occurredAt: { gte: startOfMonth } },
-          select: { estimatedWeightGrams: true },
+          where: { userId, occurredAt: { gte: since } },
+          select: { itemName: true, action: true, estimatedWeightGrams: true, occurredAt: true },
         }),
         prisma.pantryWasteLog.groupBy({
           by: ['category'],
@@ -91,19 +94,28 @@ export class AnalyticsService {
           orderBy: { _count: { category: 'desc' } },
           take: 1,
         }),
+        prisma.mealCompletion.count({
+          where: { userId, date: { gte: monthStart } },
+        }),
       ]);
 
       const totalGrams = usedLogs.reduce((sum, l) => sum + (l.estimatedWeightGrams ?? 0), 0);
       const totalValue = usedLogs.reduce((sum, l) => sum + (l.estimatedValue ?? 0), 0);
-      const thisMonthGrams = thisMonthUsedLogs.reduce((sum, l) => sum + (l.estimatedWeightGrams ?? 0), 0);
+      const month = summariseMonth(recentLogs, now);
 
       return {
         totalKgSaved: Math.round((totalGrams / 1000) * 100) / 100,
         totalValueSaved: Math.round(totalValue * 100) / 100,
-        thisMonthKgSaved: Math.round((thisMonthGrams / 1000) * 100) / 100,
+        // Kept for existing clients; equal to month.cookedInTimeKg.
+        thisMonthKgSaved: month.cookedInTimeKg,
         itemsSaved: usedLogs.length,
         weakSpotCategory: wastedByCategory[0]?.category ?? null,
         sinceDate: (await this.getAccountCreatedAt(userId)).toISOString(),
+        month: {
+          ...month,
+          recipesCooked,
+          label: now.toLocaleString('en-GB', { month: 'long' }),
+        },
       };
     } catch (error) {
       logger.error('Failed to get waste summary:', error);

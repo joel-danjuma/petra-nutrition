@@ -2,6 +2,9 @@ import axios from 'axios';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import sharp from 'sharp';
+import type { ReceiptResponse } from '@petra/agent-contract';
+
+import { parseReceipt, RECEIPT_PROMPT } from './receipt';
 
 export interface RecognitionResult {
   name: string;
@@ -92,6 +95,46 @@ export class ImageRecognitionService {
       }
       
       throw new Error('Failed to recognize image content');
+    }
+  }
+
+  /**
+   * Read a grocery receipt into pantry items. Same model and transport as
+   * `recognizeFood`; the reply is checked by `parseReceipt`, which drops what
+   * it cannot trust rather than guessing.
+   */
+  async readReceipt(imageBase64: string): Promise<ReceiptResponse> {
+    if (!this.geminiApiKey) {
+      throw new Error('Gemini API key not configured');
+    }
+    const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+    try {
+      const response = await axios.post(
+        `${this.geminiEndpoint}?key=${this.geminiApiKey}`,
+        {
+          contents: [
+            {
+              parts: [
+                { text: RECEIPT_PROMPT },
+                { inline_data: { mime_type: 'image/jpeg', data: base64Data } },
+              ],
+            },
+          ],
+          // Long receipts need room; low temperature, because this is reading.
+          generationConfig: { temperature: 0.1, topK: 32, topP: 1, maxOutputTokens: 4096 },
+        },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+      );
+      const text: string = response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const result = parseReceipt(text);
+      logger.info('Receipt read', { items: result.items.length });
+      return result;
+    } catch (error) {
+      logger.error('Receipt reading failed:', error);
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        throw new Error('Image recognition service is temporarily unavailable due to rate limits');
+      }
+      throw new Error('Failed to read the receipt');
     }
   }
 

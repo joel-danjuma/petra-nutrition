@@ -505,4 +505,42 @@ export const visionRequestSchema = z.object({
 });
 
 export type VisionRequest = z.infer<typeof visionRequestSchema>;
+
+/* ---------------------------------------------------------------- receipt */
+
+/**
+ * `POST /v1/vision/receipt` — read a shopping receipt into pantry items.
+ *
+ * A separate endpoint rather than a `context` of `/vision/pantry-items`
+ * because the shape differs (many items, not one), and that response is
+ * consumed as a single object today. Additive: nothing existing changes.
+ */
+export const receiptRequestSchema = z.object({
+  /** Base64 image payload, without a data: URI prefix. */
+  image: z.string().min(1),
+});
+
+export const receiptItemSchema = z.object({
+  /** The food as a person would say it ("Greek yoghurt"), not the till code. */
+  name: z.string().min(1),
+  category: z.string(),
+  brand: z.string().optional(),
+  quantity: z.number().positive().optional(),
+  unit: z.string().optional(),
+  /**
+   * Days until it typically turns, from the purchase date. An estimate unless
+   * a date was printed — the user reviews it before anything is saved.
+   */
+  expiresInDays: z.number().int().min(0).max(3650).optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+export const receiptResponseSchema = z.object({
+  items: z.array(receiptItemSchema),
+  store: z.string().optional(),
+});
+
+export type ReceiptRequest = z.infer<typeof receiptRequestSchema>;
+export type ReceiptItem = z.infer<typeof receiptItemSchema>;
+export type ReceiptResponse = z.infer<typeof receiptResponseSchema>;
 export type AgentHealth = z.infer<typeof agentHealthSchema>;

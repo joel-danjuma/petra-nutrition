@@ -329,6 +329,25 @@ export class PantryController {
     }
   }
 
+  /**
+   * Read a receipt photo into a list of items. Nothing is saved here: the
+   * client shows the list for the user to correct, and creates what they keep.
+   */
+  async readReceipt(req: Request, res: Response) {
+    if (!req.file) {
+      throw new ValidationError('A photo of the receipt is required');
+    }
+    try {
+      const image = await fs.readFile(req.file.path, { encoding: 'base64' });
+      const result = await agentClient.readReceipt({ image });
+      logger.info('Receipt read', { userId: req.user!.id, items: result.items.length });
+      res.json({ success: true, data: result, metadata: { timestamp: new Date().toISOString() } });
+    } finally {
+      // The photo is only needed for the one request, success or not.
+      await fs.unlink(req.file.path).catch(err => logger.warn('Failed to clean up receipt photo:', err));
+    }
+  }
+
   async exportData(req: Request, res: Response) {
     const userId = req.user!.id;
     const { format = 'json' } = req.query;

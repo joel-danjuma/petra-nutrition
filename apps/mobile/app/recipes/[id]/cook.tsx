@@ -3,7 +3,7 @@ import { View, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronDown, ChevronRight, X } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useAuthStore } from '@petra/shared';
+import { formatTimer as fmt, useAuthStore } from '@petra/shared';
 
 import { API_URL } from '../../../src/config/api';
 import { color, onDark, radius, space, type } from '../../../src/theme';
@@ -34,11 +34,6 @@ interface RecipeDetail {
   nutrition?: { calories: number; protein: number; fiber?: number };
 }
 
-function fmt(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
-}
 
 /**
  * Cook Mode runs on the design system's dark surface.
