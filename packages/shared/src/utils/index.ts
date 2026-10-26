@@ -4,3 +4,4 @@ export * from './validation';
 export * from './formatting';
 export * from './pantry';
 export * from './cook';
+export * from './ingredients';

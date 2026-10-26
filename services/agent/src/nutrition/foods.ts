@@ -1,3 +1,9 @@
+import {
+  FORM_WORDS,
+  ingredientKey,
+  ingredientWords,
+  singular,
+} from '@petra/food-measures';
 import axios from 'axios';
 
 import { TTL, cacheGet, cacheSet } from '../cache';
@@ -60,14 +66,21 @@ export interface FoodDatabase {
   lookup(ingredientName: string): Promise<FoodMatch | null>;
 }
 
-/** Cache key normalisation: "  Chicken Breasts " and "chicken breast" are one. */
+/**
+ * Cache key normalisation: "  Chicken Breasts " and "chicken breast" are one.
+ *
+ * Also the search query, so descriptors are kept — "extra virgin olive oil" is
+ * a better question for a nutrition database than "olive oil" — but plurals go
+ * through the shared rule, which turns "apples" into "apple" rather than the
+ * "appl" no database recognises.
+ */
 export function normaliseFoodKey(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
-    .map(w => (w.endsWith('es') ? w.slice(0, -2) : w.endsWith('s') ? w.slice(0, -1) : w))
+    .map(singular)
     .join(' ');
 }
 
@@ -141,25 +154,48 @@ const NOT_EATEN = /^\s*(cold |hot |boiling |warm |filtered |tap )?water\s*$/i;
 
 export const isNotEaten = (name: string): boolean => NOT_EATEN.test(name.trim());
 
+/**
+ * The table above, keyed by ingredient identity, so "extra virgin olive oil",
+ * "unsalted butter" and "flaky sea salt" find their row the way the pantry and
+ * the shopping list would name them.
+ */
+const STAPLE_MACROS_BY_KEY = new Map(
+  Object.entries(STAPLE_MACROS).map(([name, row]) => [ingredientKey(name), row])
+);
+
+/** Staples named in more than one word, longest first. */
+const MULTI_WORD_STAPLES = [...STAPLE_MACROS_BY_KEY]
+  .filter(([key]) => key.includes(' '))
+  .sort(([a], [b]) => b.length - a.length);
+
 /** Reference macros for a staple, or null if it is not one. */
 export function stapleMacros(name: string): FoodMatch | null {
-  const key = normaliseFoodKey(name);
-  if (!key) return null;
+  const words = ingredientWords(name);
+  if (!words.length) return null;
 
-  // Longest key first, so "black pepper" beats "pepper" and "olive oil" beats
-  // "oil". An exact match wins outright.
-  const exact = STAPLE_MACROS[key];
-  if (exact) return { macros: exact.macros, source: 'usda', matchedAs: exact.matchedAs };
+  const found = (row: { macros: FoodMacros; matchedAs: string }): FoodMatch => ({
+    macros: row.macros,
+    source: 'usda',
+    matchedAs: row.matchedAs,
+  });
 
-  const keys = Object.keys(STAPLE_MACROS).sort((a, b) => b.length - a.length);
-  for (const candidate of keys) {
-    if (key === candidate || key.endsWith(` ${candidate}`) || key.startsWith(`${candidate} `)) {
-      const hit = STAPLE_MACROS[candidate];
-      return { macros: hit.macros, source: 'usda', matchedAs: hit.matchedAs };
-    }
-  }
+  // An exact identity wins outright.
+  const exact = STAPLE_MACROS_BY_KEY.get(words.join(' '));
+  if (exact) return found(exact);
 
-  return null;
+  // Then the same thing with its form set aside: "ground black pepper" is
+  // black pepper by weight.
+  const formless = STAPLE_MACROS_BY_KEY.get(
+    words.filter(w => !FORM_WORDS.has(w)).join(' ')
+  );
+  if (formless) return found(formless);
+
+  // Then a more specific name for a staple of two or more words — "sweet
+  // smoked paprika". Never a one-word staple: "peanut butter" is not butter,
+  // "almond flour" is not flour and "butter beans" are not butter at all.
+  const key = words.join(' ');
+  const suffix = MULTI_WORD_STAPLES.find(([k]) => key.endsWith(` ${k}`));
+  return suffix ? found(suffix[1]) : null;
 }
 
 const FDC_SEARCH = 'https://api.nal.usda.gov/fdc/v1/foods/search';

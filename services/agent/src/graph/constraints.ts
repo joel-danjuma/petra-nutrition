@@ -1,4 +1,5 @@
 import type { AgentContext } from '@petra/agent-contract';
+import { STAPLES, isStaple } from '@petra/food-measures';
 
 import { expandAllergen, expandDiet, normalise } from '../retrieval/terms';
 
@@ -23,47 +24,23 @@ import { expandAllergen, expandDiet, normalise } from '../retrieval/terms';
  */
 
 /**
- * Assumed present in any kitchen. Never counted as an ingredient the user has
- * to go and buy, and never listed as "missing".
- *
- * The line is "would a competent cook expect to already have this?" Olive oil
- * yes; olives no. Dried oregano yes; fresh basil no. Garlic powder yes; a bulb
- * of garlic no — that one is genuinely a shop trip, and pretending otherwise is
- * how a recipe stops being cookable.
+ * Assumed present in any kitchen, and the test for one. Both live in
+ * `@petra/food-measures` now, because the API's pantry match and shopping list
+ * have to agree with the compose prompt about what nobody is sent out for.
  */
-export const STAPLES = [
-  'salt',
-  'sea salt',
-  'black pepper',
-  'white pepper',
-  'olive oil',
-  'vegetable oil',
-  'sunflower oil',
-  'butter',
-  'water',
-  'dried oregano',
-  'dried basil',
-  'dried thyme',
-  'dried rosemary',
-  'dried parsley',
-  'dried mixed herbs',
-  'bay leaf',
-  'chilli flakes',
-  'red pepper flakes',
-  'paprika',
-  'smoked paprika',
-  'ground cumin',
-  'ground coriander',
-  'garlic powder',
-  'onion powder',
-  'ground cinnamon',
-  'ground nutmeg',
-  'turmeric',
-  'curry powder',
-  'cayenne pepper',
-  'sugar',
-  'plain flour',
-];
+export { STAPLES, isStaple };
+
+/**
+ * Every word of every staple's name.
+ *
+ * What a method step may mention without the ingredient list naming it —
+ * "season with salt and pepper", "a pinch of oregano". A looser question than
+ * `isStaple`, deliberately: this one only decides whether a word in prose is a
+ * phantom ingredient, and over-flagging there rejects good recipes.
+ */
+export const STAPLE_TOKENS: ReadonlySet<string> = new Set(
+  STAPLES.flatMap(normalise)
+);
 
 /**
  * Words that describe an ingredient without changing what you'd buy.
@@ -183,25 +160,6 @@ export function unknownTokensIn(name: string, constraints: Constraints): string[
   return normalise(name)
     .filter(t => !DESCRIPTORS.has(t))
     .filter(t => !constraints.allowedTokens.has(t));
-}
-
-/**
- * Is this a staple — assumed present, never shopped for?
- *
- * The test is that the name is *no more specific* than a staple: every content
- * token it has must appear in that staple's name. "oil" and "olive oil" are
- * both the staple; "peanut butter" is not butter, and "bell pepper" is not
- * black pepper. The looser test — staple's tokens contained in the name — gets
- * both of those wrong, and getting them wrong means an allergen or a shopping
- * trip is quietly treated as already in the cupboard.
- */
-export function isStaple(name: string): boolean {
-  const tokens = normalise(name).filter(t => !DESCRIPTORS.has(t));
-  if (!tokens.length) return false;
-  return STAPLES.some(staple => {
-    const st = new Set(normalise(staple).filter(t => !DESCRIPTORS.has(t)));
-    return st.size > 0 && tokens.every(t => st.has(t));
-  });
 }
 
 function dedupe(names: string[]): string[] {
