@@ -5,13 +5,12 @@ import { router } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Check, Images, PenLine, X, Zap, ZapOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore } from '@petra/shared';
+import { ApiError, GENERATION_TIMEOUT_MS, useApi } from '@petra/shared';
 
 import { color, onDark, radius, space } from '../../../src/theme';
 import { CameraPermissionGate } from '../../../src/components/CameraPermissionGate';
 import { LoadingSpinner } from '../../../src/components/ui/LoadingSpinner';
 import { Text } from '../../../src/components/ui/Text';
-import { API_URL } from '../../../src/config/api';
 
 const { width } = Dimensions.get('window');
 
@@ -41,7 +40,7 @@ interface DetectedItem {
 
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
   const [mode, setMode] = useState<ScanMode>('fresh');
   const [isProcessing, setIsProcessing] = useState(false);
   const [flashMode, setFlashMode] = useState<'off' | 'on'>('off');
@@ -80,19 +79,24 @@ export default function ScanScreen() {
 
       // Recognition happens here rather than on the add screen so several items
       // can be reviewed before any of them is committed to the pantry.
-      const res = await fetch(`${API_URL}/pantry/scan/image`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: photo.base64,
-          context: mode === 'receipt' ? 'receipt' : 'pantry_item',
-        }),
-      });
-      const data = await res.json();
+      // A refusal from the server reads the same as an empty result: either
+      // way there is nothing to review, and the screen offers manual entry.
+      // No answer at all is still a failure, and lands in the catch below.
+      const data = await api.client
+        .post<unknown>(
+          '/pantry/scan/image',
+          {
+            imageBase64: photo.base64,
+            context: mode === 'receipt' ? 'receipt' : 'pantry_item',
+          },
+          { timeoutMs: GENERATION_TIMEOUT_MS }
+        )
+        .catch(err => {
+          if (err instanceof ApiError && err.status > 0) return null;
+          throw err;
+        });
 
-      const items: DetectedItem[] = (
-        Array.isArray(data?.data) ? data.data : data?.data ? [data.data] : []
-      )
+      const items: DetectedItem[] = (Array.isArray(data) ? data : data ? [data] : [])
         .filter((i: any) => i?.name)
         .map((i: any) => ({
           name: i.name,

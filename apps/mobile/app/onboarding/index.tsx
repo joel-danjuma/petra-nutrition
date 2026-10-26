@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { View, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '@petra/shared';
+import { useApi, useAuthStore, type User } from '@petra/shared';
 
 import { color, radius, space } from '../../src/theme';
 import { Button } from '../../src/components/ui/Button';
 import { Chip } from '../../src/components/ui/Chip';
 import { SectionHeader } from '../../src/components/ui/SectionHeader';
 import { Text } from '../../src/components/ui/Text';
-import { API_URL } from '../../src/config/api';
 
 const DIET_OPTIONS = [
   'Vegetarian',
@@ -28,7 +27,7 @@ const SKILL_OPTIONS: { id: 'beginner' | 'confident' | 'experienced'; label: stri
 ];
 
 export default function OnboardingScreen() {
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
   const setUser = useAuthStore(state => state.setUser);
 
   const [step, setStep] = useState(0);
@@ -44,24 +43,19 @@ export default function OnboardingScreen() {
   const finish = async () => {
     setIsSaving(true);
     try {
-      const response = await fetch(`${API_URL}/users/onboarding`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dietaryRestrictions: diets,
-          allergies: [],
-          householdSize: household === '6+' ? 6 : Number(household),
-          cookingSkill: skill,
-        }),
+      // Untyped: the screen's lowercase skill ids are what the API has always
+      // accepted (it normalises casing), and the typed method wants the enum.
+      const user = await api.client.post<User | null>('/users/onboarding', {
+        dietaryRestrictions: diets,
+        allergies: [],
+        householdSize: household === '6+' ? 6 : Number(household),
+        cookingSkill: skill,
       });
 
       // The route guard keys off `onboardingCompletedAt`, so the stored user
       // has to carry the server's answer. Without this the guard would keep
       // sending the user straight back here, forever.
-      const payload = await response.json();
-      if (response.ok && payload?.success && payload.data) {
-        setUser(payload.data);
-      }
+      if (user) setUser(user);
     } catch {
       // Non-fatal — preferences can be updated later from Profile.
     } finally {

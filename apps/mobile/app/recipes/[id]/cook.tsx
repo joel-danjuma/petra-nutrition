@@ -3,9 +3,8 @@ import { View, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronDown, ChevronRight, X } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { formatTimer as fmt, useAuthStore } from '@petra/shared';
+import { formatTimer as fmt, useApi } from '@petra/shared';
 
-import { API_URL } from '../../../src/config/api';
 import { color, onDark, radius, space, type } from '../../../src/theme';
 import { Text } from '../../../src/components/ui/Text';
 import { LoadingSpinner } from '../../../src/components/ui/LoadingSpinner';
@@ -44,7 +43,7 @@ interface RecipeDetail {
  */
 export default function CookModeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [step, setStep] = useState(0);
@@ -58,16 +57,11 @@ export default function CookModeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/recipes/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!cancelled && data.success) {
-          setRecipe(data.data);
+        const data = await api.client.get<RecipeDetail>(`/recipes/${id}`);
+        if (!cancelled) {
+          setRecipe(data);
           setSec(
-            data.data.instructions?.[0]?.duration
-              ? data.data.instructions[0].duration * 60
-              : 0
+            data.instructions?.[0]?.duration ? data.instructions[0].duration * 60 : 0
           );
         }
       } catch {
@@ -79,7 +73,7 @@ export default function CookModeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, token]);
+  }, [id, api]);
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
@@ -119,17 +113,17 @@ export default function CookModeScreen() {
   const finish = async () => {
     try {
       if (recipe.nutrition) {
-        await fetch(`${API_URL}/analytics/meal-completion`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // Caught on its own so a refused completion log does not also skip
+        // the waste log below.
+        await api.analytics
+          .logMealCompletion({
             recipeId: recipe.id,
             calories: recipe.nutrition.calories,
             protein: recipe.nutrition.protein,
             fiber: recipe.nutrition.fiber,
             servings: recipe.servings,
-          }),
-        });
+          })
+          .catch(() => undefined);
       }
 
       const usedIngredientIds = Object.keys(checked).filter(k => checked[k]);
@@ -137,16 +131,12 @@ export default function CookModeScreen() {
         usedIngredientIds.map(ingId => {
           const ing = recipe.ingredients.find(i => i.id === ingId);
           if (!ing) return Promise.resolve();
-          return fetch(`${API_URL}/analytics/waste-log`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              itemName: ing.name,
-              category: 'other',
-              action: 'used',
-              quantity: ing.amount,
-              unit: ing.unit,
-            }),
+          return api.client.post('/analytics/waste-log', {
+            itemName: ing.name,
+            category: 'other',
+            action: 'used',
+            quantity: ing.amount,
+            unit: ing.unit,
           });
         })
       );

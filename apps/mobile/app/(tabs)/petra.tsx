@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowRight } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuth, useAuthStore } from '@petra/shared';
+import { errorMessage, useApi, useAuth, useIsAuthenticated } from '@petra/shared';
 
 import { color, fontSize, radius, space, type } from '../../src/theme';
 import { ChatMessage } from '../../src/components/ChatMessage';
@@ -20,7 +20,6 @@ import { Chip } from '../../src/components/ui/Chip';
 import { LoadingDots } from '../../src/components/ui/LoadingDots';
 import { Text } from '../../src/components/ui/Text';
 import { RecipeCard, RecipeCardSummary } from '../../src/components/RecipeCard';
-import { API_URL } from '../../src/config/api';
 
 /**
  * A dish Petra composed rather than retrieved.
@@ -69,6 +68,16 @@ interface Message {
   savedRecipeId?: string;
 }
 
+/** The parts of a `/chat/message` reply this screen reads. */
+interface ChatReply {
+  content?: string;
+  recipe?: RecipeCardSummary | null;
+  generatedRecipe?: GeneratedRecipe | null;
+  nutrition?: Nutrition | null;
+  assumptions?: string[];
+  compromises?: string[];
+}
+
 /**
  * Shape a composed dish into the card summary.
  *
@@ -101,7 +110,8 @@ const SUGGESTIONS = ['Something with what I have', 'Under 30 minutes', 'Leftover
 
 export default function PetraChatScreen() {
   const { user } = useAuth();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
+  const signedIn = useIsAuthenticated();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -123,15 +133,10 @@ export default function PetraChatScreen() {
   }, []);
 
   const createSession = async () => {
-    if (!token) return;
+    if (!signedIn) return;
     try {
-      const res = await fetch(`${API_URL}/chat/sessions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Mobile Chat' }),
-      });
-      const data = await res.json();
-      if (data.success) setSessionId(data.data.id);
+      const session = await api.chat.createSession({ title: 'Mobile Chat' });
+      setSessionId(session.id);
     } catch {
       // Session creation failure is non-fatal — retried with the first message
     }
@@ -155,47 +160,39 @@ export default function PetraChatScreen() {
     try {
       let activeSessionId = sessionId;
 
-      if (!activeSessionId && token) {
-        const res = await fetch(`${API_URL}/chat/sessions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: content.slice(0, 50) }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          activeSessionId = data.data.id;
+      if (!activeSessionId && signedIn) {
+        // As before, a session that cannot be created is not fatal: the
+        // message still goes, just without a stored conversation.
+        const session = await api.chat
+          .createSession({ title: content.slice(0, 50) })
+          .catch(() => null);
+        if (session) {
+          activeSessionId = session.id;
           setSessionId(activeSessionId);
         }
       }
 
-      const res = await fetch(`${API_URL}/chat/message`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: activeSessionId, message: content }),
+      const reply = await api.chat.sendMessage<ChatReply | null>({
+        sessionId: activeSessionId,
+        message: content,
       });
 
-      const data = await res.json();
-
-      if (data.success) {
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          content:
-            data.data?.content ||
-            'I received your message, but something went wrong with my response.',
-          role: 'assistant',
-          timestamp: new Date(),
-          recipe: data.data?.recipe ?? null,
-          generatedRecipe: data.data?.generatedRecipe ?? null,
-          nutrition: data.data?.nutrition ?? null,
-          assumptions: data.data?.assumptions ?? [],
-          compromises: data.data?.compromises ?? [],
-        };
-        setMessages(prev => [...prev, aiResponse]);
-      } else {
-        throw new Error(data.error?.message || 'Failed to get response');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to send message. Please try again.');
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        content:
+          reply?.content ||
+          'I received your message, but something went wrong with my response.',
+        role: 'assistant',
+        timestamp: new Date(),
+        recipe: reply?.recipe ?? null,
+        generatedRecipe: reply?.generatedRecipe ?? null,
+        nutrition: reply?.nutrition ?? null,
+        assumptions: reply?.assumptions ?? [],
+        compromises: reply?.compromises ?? [],
+      };
+      setMessages(prev => [...prev, aiResponse]);
+    } catch (error) {
+      Alert.alert('Error', errorMessage(error, 'Failed to send message. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -224,7 +221,7 @@ export default function PetraChatScreen() {
     // id it would dedupe against does not exist until the response lands.
     if (savingMessageId) return;
 
-    if (!token) {
+    if (!signedIn) {
       Alert.alert('Sign in to save recipes', 'Your session has expired. Sign in and try again.');
       return;
     }
@@ -232,31 +229,21 @@ export default function PetraChatScreen() {
     setSavingMessageId(messageId);
 
     try {
-      const res = await fetch(`${API_URL}/recipes/generated`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipe: message.generatedRecipe,
-          // undefined, not null: the field is optional and null fails validation.
-          nutrition: message.nutrition ?? undefined,
-        }),
+      const saved = await api.recipes.saveGenerated({
+        recipe: message.generatedRecipe,
+        // undefined, not null: the field is optional and null fails validation.
+        nutrition: message.nutrition ?? undefined,
       });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error?.message || 'Save failed');
-
-      const savedId = data.data.id;
+      const savedId = saved.id;
       setMessages(prev =>
         prev.map(m => (m.id === messageId ? { ...m, savedRecipeId: savedId } : m))
       );
       router.push(`/recipes/${savedId}`);
-    } catch (error: any) {
+    } catch (error) {
       // The draft stays on the message, so the card is still tappable and the
       // user can simply try again.
-      Alert.alert(
-        'Could not save that recipe',
-        error?.message ?? 'Try again in a moment.'
-      );
+      Alert.alert('Could not save that recipe', errorMessage(error, 'Try again in a moment.'));
     } finally {
       setSavingMessageId(null);
     }

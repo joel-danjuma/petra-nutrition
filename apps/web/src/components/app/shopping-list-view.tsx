@@ -66,7 +66,7 @@ export function ShoppingListView({
     if (!name) return;
     setAdding(true);
     try {
-      const res = await api.client.patch<ShoppingListWire>(
+      const updated = await api.client.patch<ShoppingListWire>(
         `/shopping-lists/${list.id}/items`,
         {
           items: [
@@ -80,10 +80,10 @@ export function ShoppingListView({
           ],
         }
       );
-      if (!res.success || !res.data) throw new Error();
+      if (!updated) throw new Error();
       onChange({
-        ...res.data,
-        skippedItems: res.data.skippedItems ?? list.skippedItems,
+        ...updated,
+        skippedItems: updated.skippedItems ?? list.skippedItems,
       });
       setNewItem('');
     } catch {
@@ -95,14 +95,8 @@ export function ShoppingListView({
 
   const exportCsv = async () => {
     try {
-      const res = await api.client.get<string>(
-        `/shopping-lists/${list.id}/export`,
-        {
-          params: { format: 'csv' },
-          responseType: 'blob',
-        }
-      );
-      const blob = res as unknown as Blob;
+      const csv = await api.shoppingLists.export(list.id, 'csv');
+      const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -116,12 +110,12 @@ export function ShoppingListView({
 
   const markDone = async () => {
     try {
-      const res = await api.client.post<ShoppingListWire>(
+      const done = await api.client.post<ShoppingListWire | null>(
         `/shopping-lists/${list.id}/complete`
       );
       onChange({
         ...list,
-        ...(res.data ?? {}),
+        ...(done ?? {}),
         isCompleted: true,
         items: list.items,
       });

@@ -3,11 +3,10 @@
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { useApi } from '@petra/shared';
+import { errorMessage, useApi } from '@petra/shared';
 
 import { AuthField, FormError } from '@/components/auth/field';
 import { Button } from '@/components/ui/button';
-import { errorMessage } from '@/lib/utils';
 
 export default function ForgotPasswordPage() {
   const api = useApi();
@@ -21,8 +20,7 @@ export default function ForgotPasswordPage() {
     setError(null);
     setIsLoading(true);
     try {
-      const res = await api.auth.requestPasswordReset({ email });
-      if (!res.success) throw new Error(res.error?.message);
+      await api.auth.requestPasswordReset({ email });
       setSent(true);
     } catch (err) {
       setError(

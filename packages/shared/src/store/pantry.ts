@@ -1,6 +1,14 @@
 import { create } from 'zustand';
-import { PantryItem, CreatePantryItem, UpdatePantryItem, PantrySearch, PantryStats } from '../types';
-import { requireApiEndpoints } from '../api';
+import {
+  PantryItem,
+  CreatePantryItem,
+  UpdatePantryItem,
+  PantrySearch,
+  PantryStats,
+  RecognitionResult,
+} from '../types';
+import { errorMessage } from '../api/errors';
+import { requireApiEndpoints } from '../api/registry';
 
 interface PantryState {
   items: PantryItem[];
@@ -19,8 +27,8 @@ interface PantryActions {
   updateItem: (id: string, updates: UpdatePantryItem) => Promise<void>;
   deleteItem: (id: string, reason?: 'used' | 'wasted') => Promise<void>;
   bulkUpdate: (items: Array<{ id: string; updates: UpdatePantryItem }>) => Promise<void>;
-  scanBarcode: (barcode: string) => Promise<any>;
-  recognizeImage: (imageData: string) => Promise<any>;
+  scanBarcode: (barcode: string) => Promise<RecognitionResult>;
+  recognizeImage: (imageData: string) => Promise<RecognitionResult>;
   setSearchQuery: (query: string) => void;
   setFilters: (filters: Partial<PantrySearch>) => void;
   toggleItemSelection: (id: string) => void;
@@ -48,21 +56,16 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     try {
       const api = requireApiEndpoints();
 
-      const response = await api.pantry.getItems(params);
-      
-      if (response.success && response.data) {
-        set({
-          items: response.data.items,
-          isLoading: false,
-          error: null,
-        });
-      } else {
-        throw new Error(response.error?.message || 'Failed to fetch pantry items');
-      }
-    } catch (error: any) {
+      const { items } = await api.pantry.getItems(params);
+      set({
+        items,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error) {
       set({
         isLoading: false,
-        error: error.message || 'Failed to fetch pantry items',
+        error: errorMessage(error, 'Failed to fetch pantry items'),
       });
     }
   },
@@ -71,12 +74,8 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     try {
       const api = requireApiEndpoints();
 
-      const response = await api.pantry.getStats();
-      
-      if (response.success && response.data) {
-        set({ stats: response.data });
-      }
-    } catch (error: any) {
+      set({ stats: await api.pantry.getStats() });
+    } catch (error) {
       console.error('Failed to fetch pantry stats:', error);
     }
   },
@@ -87,25 +86,20 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     try {
       const api = requireApiEndpoints();
 
-      const response = await api.pantry.create(item);
-      
-      if (response.success && response.data) {
-        const { items } = get();
-        set({
-          items: [...items, response.data],
-          isLoading: false,
-          error: null,
-        });
-        
-        // Refresh stats
-        get().fetchStats();
-      } else {
-        throw new Error(response.error?.message || 'Failed to add item');
-      }
-    } catch (error: any) {
+      const created = await api.pantry.create(item);
+      const { items } = get();
+      set({
+        items: [...items, created],
+        isLoading: false,
+        error: null,
+      });
+
+      // Refresh stats
+      get().fetchStats();
+    } catch (error) {
       set({
         isLoading: false,
-        error: error.message || 'Failed to add item',
+        error: errorMessage(error, 'Failed to add item'),
       });
       throw error;
     }
@@ -117,29 +111,20 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     try {
       const api = requireApiEndpoints();
 
-      const response = await api.pantry.update(id, updates);
-      
-      if (response.success && response.data) {
-        const { items } = get();
-        const updatedItems = items.map(item => 
-          item.id === id ? response.data! : item
-        );
-        
-        set({
-          items: updatedItems,
-          isLoading: false,
-          error: null,
-        });
-        
-        // Refresh stats
-        get().fetchStats();
-      } else {
-        throw new Error(response.error?.message || 'Failed to update item');
-      }
-    } catch (error: any) {
+      const updated = await api.pantry.update(id, updates);
+      const { items } = get();
+      set({
+        items: items.map(item => (item.id === id ? updated : item)),
+        isLoading: false,
+        error: null,
+      });
+
+      // Refresh stats
+      get().fetchStats();
+    } catch (error) {
       set({
         isLoading: false,
-        error: error.message || 'Failed to update item',
+        error: errorMessage(error, 'Failed to update item'),
       });
       throw error;
     }
@@ -151,29 +136,21 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     try {
       const api = requireApiEndpoints();
 
-      const response = await api.pantry.delete(id, reason);
-      
-      if (response.success) {
-        const { items, selectedItems } = get();
-        const updatedItems = items.filter(item => item.id !== id);
-        const updatedSelection = selectedItems.filter(itemId => itemId !== id);
-        
-        set({
-          items: updatedItems,
-          selectedItems: updatedSelection,
-          isLoading: false,
-          error: null,
-        });
-        
-        // Refresh stats
-        get().fetchStats();
-      } else {
-        throw new Error(response.error?.message || 'Failed to delete item');
-      }
-    } catch (error: any) {
+      await api.pantry.delete(id, reason);
+      const { items, selectedItems } = get();
+      set({
+        items: items.filter(item => item.id !== id),
+        selectedItems: selectedItems.filter(itemId => itemId !== id),
+        isLoading: false,
+        error: null,
+      });
+
+      // Refresh stats
+      get().fetchStats();
+    } catch (error) {
       set({
         isLoading: false,
-        error: error.message || 'Failed to delete item',
+        error: errorMessage(error, 'Failed to delete item'),
       });
       throw error;
     }
@@ -185,57 +162,26 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     try {
       const api = requireApiEndpoints();
 
-      const response = await api.pantry.bulkUpdate(itemUpdates);
-      
-      if (response.success && response.data) {
-        // Refresh the entire list after bulk update
-        await get().fetchItems();
-      } else {
-        throw new Error(response.error?.message || 'Failed to update items');
-      }
-    } catch (error: any) {
+      await api.pantry.bulkUpdate(itemUpdates);
+      // Refresh the entire list after bulk update
+      await get().fetchItems();
+    } catch (error) {
       set({
         isLoading: false,
-        error: error.message || 'Failed to update items',
+        error: errorMessage(error, 'Failed to update items'),
       });
       throw error;
     }
   },
 
-  scanBarcode: async (barcode: string) => {
-    try {
-      const api = requireApiEndpoints();
+  scanBarcode: (barcode: string) =>
+    requireApiEndpoints().pantry.scanBarcode({ barcode }),
 
-      const response = await api.pantry.scanBarcode({ barcode });
-      
-      if (response.success && response.data) {
-        return response.data;
-      } else {
-        throw new Error(response.error?.message || 'Barcode scan failed');
-      }
-    } catch (error: any) {
-      throw error;
-    }
-  },
-
-  recognizeImage: async (imageData: string) => {
-    try {
-      const api = requireApiEndpoints();
-
-      const response = await api.pantry.recognizeImage({ 
-        imageBase64: imageData,
-        context: 'pantry_item'
-      });
-      
-      if (response.success && response.data) {
-        return response.data;
-      } else {
-        throw new Error(response.error?.message || 'Image recognition failed');
-      }
-    } catch (error: any) {
-      throw error;
-    }
-  },
+  recognizeImage: (imageData: string) =>
+    requireApiEndpoints().pantry.recognizeImage({
+      imageBase64: imageData,
+      context: 'pantry_item',
+    }),
 
   setSearchQuery: (query: string) => {
     set({ searchQuery: query });
