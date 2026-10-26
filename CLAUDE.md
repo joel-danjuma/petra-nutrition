@@ -102,6 +102,8 @@ packages/
   shared/           Shared types, API client, Zustand stores, design tokens
   agent-contract/   Zod wire contract between the API and the agent
   service-kit/      Logger and HTTP error semantics, shared by both services
+  food-measures/    Ingredient identity (keys, synonyms, coverage, staples) and
+                    quantity arithmetic, shared by the agent, the API and shared
 docker/       Dockerfiles (api, agent, web) and compose files
 scripts/      Design-token generation and deployment automation
 .github/workflows/ci-cd.yml  GitHub Actions CI/CD
@@ -162,7 +164,13 @@ Express + TypeScript, layered:
 - `src/routes/` — Route definitions (thin, delegates to controllers)
 - `src/controllers/` — Request handling and response shaping
 - `src/services/` — Domain logic, plus `agent-client.ts`, the typed HTTP client
-  for the agent (keep-alive pool, tiered timeouts, no retries on generation)
+  for the agent (keep-alive pool, tiered timeouts, no retries on generation),
+  and `caller-context.ts`, the **only** producer of an agent request's `user`
+  and `context`. Controllers never assemble an `AgentContext` by hand: the
+  profile's allergies are the floor, request additions can only be unioned on,
+  the pantry is PREMIUM-only, and a failed profile read sets
+  `profileUnavailable` (the agent then tells the user allergies weren't checked)
+  rather than sending an empty allergy list as though it were true.
 - `src/middleware/` — Auth (JWT), validation (Zod), rate limiting, error handling
 - `src/database/` — Prisma client, query helpers, transactions
 - `prisma/schema.prisma` — **The** source of truth for the database schema
@@ -193,7 +201,10 @@ Express + TypeScript, layered:
 - `src/retrieval/` — Hybrid retrieval (RRF over pantry overlap, lexical,
   semantic). Candidate generation is indexed SQL (`sql.ts`); fusion stays in
   TypeScript. `terms.ts` holds the allergen/diet vocabulary that both retrieval
-  and generation filter on.
+  and generation filter on. Name normalisation, plurals, synonyms, pantry
+  coverage, staples and SQL term patterns all come from `@petra/food-measures`
+  — never add a local normaliser; the API, agent and apps must agree on what
+  "the same ingredient" means.
 - `src/cache/` — ioredis handle. Nothing here may fail a turn: every operation
   swallows its errors and reports a miss.
 - `src/vision/` — Gemini Pro Vision food recognition
@@ -225,7 +236,8 @@ merge case takes: same constraints, same validator, different starting point.
   state is checkpointed. Hence no `Set`, no `Map`, no functions — the constraint
   set is derived on demand rather than stored, and the runtime callbacks live in
   `turn-context.ts` (async-local storage) instead.
-- `constraints.ts` — The `STAPLES` list, and the allowed/blocked sets. The
+- `constraints.ts` — The allowed/blocked sets (`STAPLES` itself now lives in
+  `@petra/food-measures`). The
   allowed set is about usefulness (a dish cookable tonight); the blocked set is
   about safety and reuses `expandAllergen`/`expandDiet` from retrieval.
 - `validate.ts` — Code, not a model. Modelled on `validateEnrichment`: reject,
@@ -250,6 +262,10 @@ Next.js 14 App Router with:
 - `src/lib/` — Client-side utilities
 - Styling: Tailwind CSS
 - State: Zustand stores from `@petra/shared`
+- HTTP: every call goes through the shared fetch-based client built by
+  `createPetraClient` (`packages/shared/src/api`) — token, envelope, one
+  `ApiError` shape and 401 refresh live there. Mobile passes `expo/fetch`. Do
+  not add raw `fetch` calls or read the token by hand in either app.
 - Forms: React Hook Form + Zod validation
 
 ### Database Schema (Prisma)
