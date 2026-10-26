@@ -17,7 +17,7 @@ import type { PetraApiEndpoints } from './endpoints';
  */
 let endpoints: PetraApiEndpoints | null = null;
 
-/** Called once by `initializeStores`, before anything renders. */
+/** Called once by `createPetraClient`, before anything renders. */
 export const setApiEndpoints = (api: PetraApiEndpoints | null): void => {
   endpoints = api;
 };
@@ -32,8 +32,8 @@ export const getApiEndpoints = (): PetraApiEndpoints | null => endpoints;
 export const requireApiEndpoints = (): PetraApiEndpoints => {
   if (!endpoints) {
     throw new Error(
-      'Petra API is not initialised — call initializeStores(apiClient) at module ' +
-        'scope before rendering.'
+      'Petra API is not initialised — call createPetraClient({ baseUrl }) at ' +
+        'module scope before rendering.'
     );
   }
   return endpoints;

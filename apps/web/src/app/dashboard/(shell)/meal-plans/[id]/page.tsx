@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Calendar, Loader2 } from 'lucide-react';
-import { MEAL_TYPES, useApi } from '@petra/shared';
+import { MEAL_TYPES, isPremiumRequired, useApi } from '@petra/shared';
 import toast from 'react-hot-toast';
 
 import { planSummary, WeekGrid } from '@/components/app/week';
@@ -38,17 +38,16 @@ export default function MealPlanDetailPage({
   const makeList = async () => {
     setMakingList(true);
     try {
-      const res = await api.client.post<{ id: string }>(
+      const list = await api.client.post<{ id: string }>(
         '/shopping-lists/generate',
         {
           mealPlanId: params.id,
         }
       );
-      if (!res.success || !res.data) throw new Error();
-      router.push(`/dashboard/shopping-lists/${res.data.id}`);
+      router.push(`/dashboard/shopping-lists/${list.id}`);
     } catch (err) {
       toast.error(
-        (err as { code?: string })?.code === 'PREMIUM_REQUIRED'
+        isPremiumRequired(err)
           ? 'Shopping lists are part of Premium.'
           : 'The list could not be written. Try again.'
       );

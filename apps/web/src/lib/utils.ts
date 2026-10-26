@@ -97,22 +97,3 @@ export function debounce<A extends unknown[]>(
     timeout = setTimeout(() => func(...args), wait);
   };
 }
-
-/**
- * A readable message from anything an API call can reject with.
- *
- * The shared ApiClient rejects with a plain `{ code, message }` object, not an
- * `Error`, so `err instanceof Error` misses every API failure — and a sign-in
- * form that falls back to "wrong password" then says so even when the server
- * is simply not running.
- */
-export function errorMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object') {
-    const e = err as { code?: unknown; message?: unknown };
-    if (e.code === 'NETWORK_ERROR' || e.code === 'TIMEOUT_ERROR') {
-      return 'Petra cannot be reached right now. Check your connection and try again.';
-    }
-    if (typeof e.message === 'string' && e.message.trim()) return e.message;
-  }
-  return fallback;
-}

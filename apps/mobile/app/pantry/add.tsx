@@ -12,9 +12,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
-import { ItemCategory, StorageLocation, toCanonical, usePantry } from '@petra/shared';
+import {
+  ItemCategory,
+  StorageLocation,
+  errorMessage,
+  toCanonical,
+  usePantry,
+} from '@petra/shared';
 
-import { errorMessage } from '../../src/api/errors';
 import { color, radius, space } from '../../src/theme';
 import { Chip } from '../../src/components/ui/Chip';
 import { Input } from '../../src/components/ui/Input';

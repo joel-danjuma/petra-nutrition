@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { ArrowUp, History, Loader2, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useApi } from '@petra/shared';
 
 import { ComposedCookCard, LibraryCookCard } from '@/components/app/cook-card';
 import { Sheet } from '@/components/app/sheet';
@@ -51,8 +52,6 @@ interface Session {
   updatedAt: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-
 const STARTERS = [
   'Something with what needs using, 20 minutes',
   'A vegetarian dinner for two',
@@ -60,6 +59,7 @@ const STARTERS = [
 ] as const;
 
 export default function ChatPage() {
+  const api = useApi();
   const [historyOpen, setHistoryOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -78,10 +78,6 @@ export default function ChatPage() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const token = typeof window !== 'undefined'
-    ? JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.token
-    : null;
-
   useEffect(() => {
     loadSessions();
   }, []);
@@ -92,15 +88,12 @@ export default function ChatPage() {
 
   const loadSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/chat/sessions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSessions(data.data.sessions || []);
-        if (data.data.sessions?.length > 0) {
-          await loadSession(data.data.sessions[0].id);
-        }
+      const data = await api.client.get<{ sessions?: Session[] }>(
+        '/chat/sessions'
+      );
+      setSessions(data.sessions || []);
+      if (data.sessions?.length) {
+        await loadSession(data.sessions[0].id);
       }
     } catch {
       toast.error('Failed to load chat sessions');
@@ -111,29 +104,26 @@ export default function ChatPage() {
 
   const loadSession = async (sessionId: string) => {
     try {
-      const res = await fetch(`${API_URL}/chat/sessions/${sessionId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setActiveSessionId(sessionId);
-        const msgs = data.data.messages || [];
-        setMessages(
-          msgs.map((m: any) => ({
-            role: m.role === 'USER' ? 'user' : 'assistant',
-            content: Array.isArray(m.content) ? m.content.map((c: any) => c.text || '').join('') : String(m.content),
-            timestamp: new Date(m.timestamp),
-            // The API stores what the reply was about alongside its text, so
-            // reopening a conversation brings its recipe cards back rather
-            // than leaving the prose with nothing to cook from.
-            recipeId: m.metadata?.recipeId ?? undefined,
-            generatedRecipe: m.metadata?.generatedRecipe ?? undefined,
-            nutrition: m.metadata?.nutrition ?? undefined,
-            assumptions: m.metadata?.assumptions ?? undefined,
-            compromises: m.metadata?.compromises ?? undefined,
-          }))
-        );
-      }
+      const data = await api.client.get<{ messages?: unknown[] }>(
+        `/chat/sessions/${sessionId}`
+      );
+      setActiveSessionId(sessionId);
+      const msgs = data.messages || [];
+      setMessages(
+        msgs.map((m: any) => ({
+          role: m.role === 'USER' ? 'user' : 'assistant',
+          content: Array.isArray(m.content) ? m.content.map((c: any) => c.text || '').join('') : String(m.content),
+          timestamp: new Date(m.timestamp),
+          // The API stores what the reply was about alongside its text, so
+          // reopening a conversation brings its recipe cards back rather
+          // than leaving the prose with nothing to cook from.
+          recipeId: m.metadata?.recipeId ?? undefined,
+          generatedRecipe: m.metadata?.generatedRecipe ?? undefined,
+          nutrition: m.metadata?.nutrition ?? undefined,
+          assumptions: m.metadata?.assumptions ?? undefined,
+          compromises: m.metadata?.compromises ?? undefined,
+        }))
+      );
     } catch {
       toast.error('Failed to load session');
     }
@@ -141,21 +131,12 @@ export default function ChatPage() {
 
   const newSession = async () => {
     try {
-      const res = await fetch(`${API_URL}/chat/sessions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: 'New Chat' }),
+      const session = await api.client.post<Session>('/chat/sessions', {
+        title: 'New Chat',
       });
-      const data = await res.json();
-      if (data.success) {
-        const session = data.data;
-        setSessions(prev => [session, ...prev]);
-        setActiveSessionId(session.id);
-        setMessages([]);
-      }
+      setSessions(prev => [session, ...prev]);
+      setActiveSessionId(session.id);
+      setMessages([]);
     } catch {
       toast.error('Failed to create new chat session');
     }
@@ -174,17 +155,12 @@ export default function ChatPage() {
 
     if (!sessionId) {
       try {
-        const res = await fetch(`${API_URL}/chat/sessions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: input.trim().slice(0, 50) }),
+        const session = await api.client.post<Session>('/chat/sessions', {
+          title: input.trim().slice(0, 50),
         });
-        const data = await res.json();
-        if (data.success) {
-          sessionId = data.data.id;
-          setActiveSessionId(sessionId);
-          setSessions(prev => [data.data, ...prev]);
-        }
+        sessionId = session.id;
+        setActiveSessionId(sessionId);
+        setSessions(prev => [session, ...prev]);
       } catch {
         toast.error('Failed to start session');
         return;
@@ -203,22 +179,13 @@ export default function ChatPage() {
     setMessages(prev => [...prev, assistantMessage]);
 
     try {
-      const res = await fetch(`${API_URL}/chat/stream`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        },
-        body: JSON.stringify({
-          sessionId,
-          message: userMessage.content,
-        }),
+      // Through the shared client for the session token and the refresh on a
+      // 401; it rejects on a non-2xx, which lands in the fallback below. The
+      // frames are still decoded here, for now.
+      const res = await api.chat.stream({
+        sessionId,
+        message: userMessage.content,
       });
-
-      if (!res.ok) {
-        throw new Error('Stream request failed');
-      }
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
@@ -326,22 +293,18 @@ export default function ChatPage() {
     } catch {
       // Fall back to non-streaming endpoint
       try {
-        const res = await fetch(`${API_URL}/chat/message`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, message: userMessage.content }),
+        const data = await api.chat.sendMessage<{
+          content?: string;
+          message?: string;
+        } | null>({ sessionId, message: userMessage.content });
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            content: data?.content || data?.message || 'Response received.',
+          };
+          return updated;
         });
-        const data = await res.json();
-        if (data.success) {
-          setMessages(prev => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              content: data.data?.content || data.data?.message || 'Response received.',
-            };
-            return updated;
-          });
-        }
       } catch {
         toast.error('Failed to send message');
         setMessages(prev => prev.slice(0, -1));
@@ -366,24 +329,18 @@ export default function ChatPage() {
     if (message.savedRecipeId) return message.savedRecipeId;
 
     try {
-      const res = await fetch(`${API_URL}/recipes/generated`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipe: message.generatedRecipe,
-          nutrition: message.nutrition,
-        }),
+      const saved = await api.recipes.saveGenerated({
+        recipe: message.generatedRecipe,
+        nutrition: message.nutrition,
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error?.message || 'Save failed');
 
       setMessages(prev => {
         const updated = [...prev];
-        updated[index] = { ...updated[index], savedRecipeId: data.data.id };
+        updated[index] = { ...updated[index], savedRecipeId: saved.id };
         return updated;
       });
       toast.success('Saved to your recipes');
-      return data.data.id as string;
+      return saved.id;
     } catch {
       toast.error('Could not save that recipe');
       return null;

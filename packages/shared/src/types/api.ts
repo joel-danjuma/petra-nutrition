@@ -1,9 +1,20 @@
 import { z } from 'zod';
 
+// `details` is an array: one entry per failed field, exactly as the API's
+// validation middleware sends it (services/api/src/middleware/validation.ts).
+// It was typed as a record, which no response has ever matched.
 export const ApiErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
-  details: z.record(z.any()).optional(),
+  details: z
+    .array(
+      z.object({
+        field: z.string().optional(),
+        message: z.string(),
+        value: z.unknown().optional(),
+      })
+    )
+    .optional(),
   timestamp: z.string(),
   path: z.string().optional(),
 });
@@ -95,6 +106,7 @@ export const ApiErrorCode = {
   RESOURCE_LOCKED: 'RESOURCE_LOCKED',
 
   // Business Logic
+  PREMIUM_REQUIRED: 'PREMIUM_REQUIRED',
   SUBSCRIPTION_REQUIRED: 'SUBSCRIPTION_REQUIRED',
   FEATURE_NOT_AVAILABLE: 'FEATURE_NOT_AVAILABLE',
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
@@ -127,11 +139,15 @@ export const HealthCheckSchema = z.object({
   uptime: z.number(), // in seconds
 });
 
-export type ApiError = z.infer<typeof ApiErrorSchema>;
+/**
+ * The error as it travels on the wire. Callers never see this: the client
+ * turns it into the `ApiError` class (api/errors.ts), which is what rejects.
+ */
+export type ApiErrorBody = z.infer<typeof ApiErrorSchema>;
 export type ApiResponse<T = any> = {
   success: boolean;
   data?: T;
-  error?: ApiError;
+  error?: ApiErrorBody;
   metadata?: {
     timestamp: string;
     version?: string;

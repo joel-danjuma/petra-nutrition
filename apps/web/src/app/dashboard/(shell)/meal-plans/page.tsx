@@ -4,7 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Calendar, Copy, Loader2, Sparkles, Trash2 } from 'lucide-react';
-import { useApi, useAuth } from '@petra/shared';
+import {
+  GENERATION_TIMEOUT_MS,
+  errorMessage,
+  isPremiumRequired,
+  useApi,
+  useAuth,
+} from '@petra/shared';
 import toast from 'react-hot-toast';
 
 import { controlClass, Field, Sheet } from '@/components/app/sheet';
@@ -44,18 +50,16 @@ export default function WeekPage() {
   const makeList = async (plan: MealPlanWire) => {
     setMakingList(true);
     try {
-      const res = await api.client.post<{ id: string }>(
+      const list = await api.client.post<{ id: string }>(
         '/shopping-lists/generate',
         {
           mealPlanId: plan.id,
         }
       );
-      if (!res.success || !res.data) throw new Error(res.error?.message);
-      router.push(`/dashboard/shopping-lists/${res.data.id}`);
+      router.push(`/dashboard/shopping-lists/${list.id}`);
     } catch (err) {
-      const premium = (err as { code?: string })?.code === 'PREMIUM_REQUIRED';
       toast.error(
-        premium
+        isPremiumRequired(err)
           ? 'Shopping lists are part of Premium.'
           : 'The list could not be written. Try again.'
       );
@@ -237,21 +241,23 @@ function PlanSheet({
   const generate = async () => {
     setBusy(true);
     try {
-      const res = await api.client.post<{
+      const plan = await api.client.post<{
         content: string;
         structuredData?: unknown;
-      }>('/meal-plans/generate', {
-        days: Number(days),
-        preferences: notes.trim() ? { notes: notes.trim() } : undefined,
-      });
-      if (!res.success || !res.data) throw new Error(res.error?.message);
+      }>(
+        '/meal-plans/generate',
+        {
+          days: Number(days),
+          preferences: notes.trim() ? { notes: notes.trim() } : undefined,
+        },
+        { timeoutMs: GENERATION_TIMEOUT_MS }
+      );
       setResult(
-        res.data.content || JSON.stringify(res.data.structuredData, null, 2)
+        plan.content || JSON.stringify(plan.structuredData, null, 2)
       );
     } catch (err) {
       toast.error(
-        (err as { message?: string })?.message ||
-          'The plan could not be written. Try again.'
+        errorMessage(err, 'The plan could not be written. Try again.')
       );
     } finally {
       setBusy(false);

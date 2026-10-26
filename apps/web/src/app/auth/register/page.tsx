@@ -3,12 +3,11 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@petra/shared';
+import { errorMessage, useAuth } from '@petra/shared';
 
 import { AuthField, FormError } from '@/components/auth/field';
 import { Segmented } from '@/components/ds';
 import { Button } from '@/components/ui/button';
-import { errorMessage } from '@/lib/utils';
 
 type Household = '1' | '2' | '3-4' | '5+';
 

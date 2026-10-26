@@ -3,9 +3,8 @@ import { View, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronLeft, ShoppingCart } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { usePantry } from '@petra/shared';
+import { errorMessage, usePantry } from '@petra/shared';
 
-import { errorMessage } from '../../src/api/errors';
 import { loadActiveList, setItemCompleted, type ShoppingListData } from '../../src/api/shopping';
 import { color, radius, space } from '../../src/theme';
 import { Card, onSurface } from '../../src/components/ui/Card';

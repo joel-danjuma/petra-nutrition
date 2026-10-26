@@ -573,15 +573,14 @@ function ScanSheet({
     if (!file) return;
     setBusy('receipt');
     try {
-      const res = await api.pantry.readReceipt(file);
-      if (!res.success || !res.data) throw new Error();
-      if (res.data.items.length === 0) {
+      const receipt = await api.pantry.readReceipt(file);
+      if (receipt.items.length === 0) {
         toast.error(
           'No food lines could be read. Try a flatter, closer photo.'
         );
         return;
       }
-      onReceipt(res.data.items);
+      onReceipt(receipt.items);
     } catch {
       toast.error(
         'Petra could not read that receipt. Try again in better light.'
@@ -615,12 +614,12 @@ function ScanSheet({
     e.preventDefault();
     setBusy('barcode');
     try {
-      const res = await api.pantry.scanBarcode({
+      const product = await api.pantry.scanBarcode({
         barcode: barcode.replace(/\D/g, ''),
       });
-      if (!res.success || !res.data) throw new Error();
+      if (!product) throw new Error();
       setBarcode('');
-      onRecognised(toDraft(res.data));
+      onRecognised(toDraft(product));
     } catch {
       toast.error(
         'That barcode is not in the product database. Add it by hand instead.'
@@ -634,9 +633,9 @@ function ScanSheet({
     if (!file) return;
     setBusy('photo');
     try {
-      const res = await api.pantry.uploadImage(file, 'pantry_item');
-      if (!res.success || !res.data) throw new Error();
-      onRecognised(toDraft(res.data));
+      const recognised = await api.pantry.uploadImage(file, 'pantry_item');
+      if (!recognised) throw new Error();
+      onRecognised(toDraft(recognised));
     } catch {
       toast.error(
         'Petra could not read that photo. Try again closer to the label.'

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  isPremiumRequired,
+  toApiError,
   useApi,
   type ApiError,
-  type ApiResponse,
   type PetraApiEndpoints,
 } from '@petra/shared';
 
@@ -21,15 +22,6 @@ export interface QueryState<T> {
   setData: (update: (prev: T | null) => T | null) => void;
 }
 
-const toApiError = (e: unknown): ApiError =>
-  e && typeof e === 'object' && 'code' in e && 'message' in e
-    ? (e as ApiError)
-    : ({
-        code: 'NETWORK_ERROR',
-        message: e instanceof Error ? e.message : 'Something went wrong',
-        timestamp: new Date().toISOString(),
-      } as ApiError);
-
 /**
  * Load one thing from the API for a screen, through the shared typed client
  * (which carries the session token — the old screens read it out of
@@ -39,7 +31,7 @@ const toApiError = (e: unknown): ApiError =>
  * that arrives after a newer request has started is dropped.
  */
 export function useApiQuery<T>(
-  fetcher: (api: PetraApiEndpoints) => Promise<ApiResponse<T>>,
+  fetcher: (api: PetraApiEndpoints) => Promise<T>,
   deps: ReadonlyArray<unknown> = []
 ): QueryState<T> {
   const api = useApi();
@@ -64,15 +56,10 @@ export function useApiQuery<T>(
     setError(null);
     fetcherRef
       .current(api)
-      .then(res => {
+      .then(result => {
         if (id !== seq.current) return;
-        if (res.success) {
-          setData(res.data ?? null);
-          setStatus('success');
-        } else {
-          setError(toApiError(res.error));
-          setStatus('error');
-        }
+        setData(result ?? null);
+        setStatus('success');
       })
       .catch(e => {
         if (id !== seq.current) return;
@@ -91,7 +78,7 @@ export function useApiQuery<T>(
     data,
     error,
     status,
-    needsPremium: error?.code === 'PREMIUM_REQUIRED',
+    needsPremium: isPremiumRequired(error),
     reload,
     setData: update,
   };

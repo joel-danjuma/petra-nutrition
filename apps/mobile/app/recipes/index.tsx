@@ -3,7 +3,7 @@ import { View, FlatList, Pressable, StyleSheet, Alert, Image } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BookOpen, ChevronLeft, Clock, Heart, UtensilsCrossed } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuthStore } from '@petra/shared';
+import { useApi } from '@petra/shared';
 
 import { color, radius, semantic, space } from '../../src/theme';
 import { Button } from '../../src/components/ui/Button';
@@ -12,7 +12,6 @@ import { Chip } from '../../src/components/ui/Chip';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { SearchBar } from '../../src/components/SearchBar';
 import { Text } from '../../src/components/ui/Text';
-import { API_URL } from '../../src/config/api';
 
 interface Recipe {
   id: string;
@@ -28,7 +27,7 @@ interface Recipe {
 }
 
 export default function RecipeSearchScreen() {
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -39,28 +38,24 @@ export default function RecipeSearchScreen() {
       setIsLoading(true);
       setHasSearched(true);
       try {
-        const params = query ? `?search=${encodeURIComponent(query)}&limit=20` : '?limit=20';
-        const res = await fetch(`${API_URL}/recipes/search${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.success) setRecipes(data.data?.recipes || data.data || []);
+        const data = await api.client.get<{ recipes?: Recipe[] } | Recipe[] | null>(
+          '/recipes/search',
+          { params: { search: query || undefined, limit: 20 } }
+        );
+        setRecipes((Array.isArray(data) ? data : data?.recipes) || []);
       } catch {
         Alert.alert('Error', 'Failed to load recipes. Please try again.');
       } finally {
         setIsLoading(false);
       }
     },
-    [token]
+    [api]
   );
 
   const toggleFavorite = async (recipe: Recipe) => {
     try {
-      const method = recipe.isFavorited ? 'DELETE' : 'POST';
-      await fetch(`${API_URL}/recipes/${recipe.id}/favorite`, {
-        method,
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (recipe.isFavorited) await api.recipes.unfavorite(recipe.id);
+      else await api.recipes.favorite(recipe.id);
       setRecipes(prev =>
         prev.map(r => (r.id === recipe.id ? { ...r, isFavorited: !r.isFavorited } : r))
       );
