@@ -24,6 +24,33 @@ import { emitChunk, turnContext, turnSignal } from '../turn-context';
  * which makes any streaming imperfection self-correcting.
  */
 
+/**
+ * Said whenever the API could not read the caller's profile.
+ *
+ * The API proceeds rather than failing the turn, so this is the only place the
+ * reader learns that the reply was written without their allergies. Phrased as
+ * an instruction to check, because that is the one thing they can do about it.
+ */
+export const PROFILE_UNAVAILABLE_COMPROMISE =
+  "I couldn't load your dietary profile, so allergies weren't checked — " +
+  'please double-check the ingredients.';
+
+/**
+ * The compromises this turn reports: whatever the earlier nodes collected,
+ * plus the unchecked-profile caveat when it applies.
+ *
+ * Added here, not upstream, because this node owns the response envelope and
+ * every path that answers ends in it (`clarify` only asks a question, so it has
+ * nothing to caveat). Kept out of the `compromises` channel so a
+ * checkpointed thread does not carry it into a later turn whose profile read
+ * succeeded.
+ */
+function turnCompromises(state: GraphStateType): string[] {
+  return state.context?.profileUnavailable
+    ? [...state.compromises, PROFILE_UNAVAILABLE_COMPROMISE]
+    : state.compromises;
+}
+
 /** Translate the wire context into the shape the prompt builder expects. */
 function toChatContext(state: GraphStateType): ChatContext {
   const { context } = state;
@@ -63,7 +90,7 @@ function toChatContext(state: GraphStateType): ChatContext {
  * duplicate text on a phone. What the prose is for is why this dish, what the
  * reader already has, and what the agent decided on their behalf.
  */
-function turnBriefing(state: GraphStateType): string {
+function turnBriefing(state: GraphStateType, compromises: string[]): string {
   const parts: string[] = [];
 
   if (state.draft) {
@@ -116,10 +143,10 @@ reply: it is both unhelpful and untrue.`
     );
   }
 
-  if (state.compromises.length) {
+  if (compromises.length) {
     parts.push(
       `THESE DID NOT FULLY WORK OUT. Say so plainly, in one sentence, without ` +
-        `over-explaining:\n${state.compromises.map(c => `- ${c}`).join('\n')}`
+        `over-explaining:\n${compromises.map(c => `- ${c}`).join('\n')}`
     );
   }
 
@@ -148,7 +175,8 @@ export async function respond(state: GraphStateType): Promise<GraphUpdate> {
   // Deliberately no `emitNode('respond')`: the first text chunk is a better
   // signal than a label telling the reader that words are coming.
   const context = toChatContext(state);
-  const briefing = turnBriefing(state);
+  const compromises = turnCompromises(state);
+  const briefing = turnBriefing(state, compromises);
 
   const messages = [
     // Terse: a chat turn is read beside a card that already carries the
@@ -228,7 +256,7 @@ export async function respond(state: GraphStateType): Promise<GraphUpdate> {
       ...(state.draft ? { generatedRecipe: state.draft, recipeId: undefined } : {}),
       ...(state.macros ? { nutrition: state.macros } : {}),
       assumptions: state.assumptions,
-      compromises: state.compromises,
+      compromises,
       model: result.model,
       tokensUsed: (result.tokensUsed ?? 0) + state.tokensUsed,
     };

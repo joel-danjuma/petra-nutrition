@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { saveGeneratedRecipeRequestSchema } from '@petra/agent-contract';
 import { RecipeService } from '../services/recipe';
 import { agentClient } from '../services/agent-client';
+import {
+  buildCallerContext,
+  readContextAdditions,
+} from '../services/caller-context';
 import { matchRecipeToPantry, type PantryMatch } from '../services/pantry-match';
 import { prisma } from '../database';
 import { NotFoundError, ValidationError } from '../middleware/error';
@@ -237,23 +241,15 @@ export class RecipeController {
         },
       ];
 
+      // The profile's allergies go with every generation. This path used to
+      // send `allergies: []`, which is a recipe written for nobody in
+      // particular — including the user who told us they can't eat peanuts.
       const aiResponse = await agentClient.chat({
         messages,
-        user: {
-          id: userId,
-          subscriptionTier:
-            req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-        },
-        context: {
-          currentPantryItems: [],
-          pantryNames: [],
-          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
-          healthGoals: preferences?.healthGoals ?? [],
-          allergies: [],
-        },
-        // Writing a whole recipe from a bare prompt is the kind of ask the
-        // large model is actually for.
-        options: { advancedModel: true },
+        ...(await buildCallerContext(
+          req.user!,
+          readContextAdditions(preferences)
+        )),
       });
 
       logger.info('Recipe generated via AI', { userId });

@@ -1,8 +1,24 @@
 import { Request, Response } from 'express';
 import { MealPlanService } from '../services/meal-plan';
 import { agentClient } from '../services/agent-client';
+import {
+  buildCallerContext,
+  readContextAdditions,
+} from '../services/caller-context';
 import { NotFoundError, ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
+
+/**
+ * A meal-plan request's own pantry and preferences, as caller-context
+ * additions. The body names its pantry `pantryItems` and nests diets under
+ * `preferences`; everything else in `preferences` stays in the prompt text.
+ */
+function mealPlanAdditions(pantryItems: unknown, preferences: unknown) {
+  return readContextAdditions({
+    ...(preferences && typeof preferences === 'object' ? preferences : {}),
+    pantryNames: pantryItems,
+  });
+}
 
 export class MealPlanController {
   private mealPlanService: MealPlanService;
@@ -134,20 +150,15 @@ export class MealPlanController {
         },
       ];
 
+      // The request's pantry and diet ride along as additions: they can add
+      // to the profile, never stand in for it. This path used to send
+      // `allergies: []` for a plan of up to fourteen days of meals.
       const aiResponse = await agentClient.chat({
         messages,
-        user: {
-          id: userId,
-          subscriptionTier: isPremium ? 'PREMIUM' : 'FREE',
-        },
-        context: {
-          currentPantryItems: pantryItems ?? [],
-          pantryNames: pantryItems ?? [],
-          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
-          healthGoals: preferences?.healthGoals ?? [],
-          allergies: [],
-        },
-        options: { advancedModel: days > 3 },
+        ...(await buildCallerContext(
+          req.user!,
+          mealPlanAdditions(pantryItems, preferences)
+        )),
       });
 
       logger.info('Meal plan generated via AI', { userId, days });
@@ -168,7 +179,6 @@ export class MealPlanController {
   }
 
   async quickSuggestion(req: Request, res: Response) {
-    const userId = req.user!.id;
     const { mealType, pantryItems, preferences } = req.body;
 
     try {
@@ -181,18 +191,10 @@ export class MealPlanController {
 
       const aiResponse = await agentClient.chat({
         messages,
-        user: {
-          id: userId,
-          subscriptionTier:
-            req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-        },
-        context: {
-          currentPantryItems: pantryItems ?? [],
-          pantryNames: pantryItems ?? [],
-          dietaryRestrictions: preferences?.dietaryRestrictions ?? [],
-          healthGoals: [],
-          allergies: [],
-        },
+        ...(await buildCallerContext(
+          req.user!,
+          mealPlanAdditions(pantryItems, preferences)
+        )),
       });
 
       res.json({
