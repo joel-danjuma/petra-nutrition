@@ -60,28 +60,4 @@ router.post('/stream',
   asyncHandler(chatController.streamMessage.bind(chatController))
 );
 
-// Generate recipe via chat
-router.post('/generate-recipe',
-  userRateLimit(10, 60000), // 10 recipe generations per minute
-  asyncHandler(chatController.generateRecipe.bind(chatController))
-);
-
-// Generate meal plan via chat
-router.post('/generate-meal-plan',
-  userRateLimit(5, 60000), // 5 meal plan generations per minute
-  asyncHandler(chatController.generateMealPlan.bind(chatController))
-);
-
-// Get cooking tips
-router.post('/cooking-tips',
-  userRateLimit(20, 60000),
-  asyncHandler(chatController.getCookingTips.bind(chatController))
-);
-
-// Analyze nutrition
-router.post('/analyze-nutrition',
-  userRateLimit(15, 60000),
-  asyncHandler(chatController.analyzeNutrition.bind(chatController))
-);
-
 export default router;

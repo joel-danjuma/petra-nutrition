@@ -49,6 +49,16 @@ export const agentContextSchema = z.object({
   allergies: z.array(z.string()).default([]),
   activeMealPlan: z.string().optional(),
   lastRecipeSearch: z.string().optional(),
+  /**
+   * The API could not read the caller's profile, so `allergies` and
+   * `dietaryRestrictions` may be missing things the user declared.
+   *
+   * The turn still goes ahead: refusing to answer because Postgres hiccupped
+   * is worse than answering with a stated caveat. What it must not do is
+   * answer *silently*, as if an empty allergy list were the truth — so the
+   * agent turns this flag into a compromise the reader sees.
+   */
+  profileUnavailable: z.boolean().optional(),
 });
 
 export const chatResponseTypeSchema = z.enum([

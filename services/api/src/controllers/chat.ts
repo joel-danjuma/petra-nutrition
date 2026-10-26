@@ -2,15 +2,18 @@ import { Request, Response } from 'express';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import type {
-  AgentContext,
   ChatRequest,
   ChatResponse as AgentChatResponse,
 } from '@petra/agent-contract';
 
 import { ChatService } from '../services/chat';
-import { PantryService } from '../services/pantry';
 import { agentClient } from '../services/agent-client';
-import { NotFoundError, ValidationError } from '../middleware/error';
+import {
+  buildCallerContext,
+  readContextAdditions,
+  type CallerContext,
+} from '../services/caller-context';
+import { NotFoundError } from '../middleware/error';
 import { logger } from '../utils/logger';
 import { prisma } from '../database';
 
@@ -32,6 +35,26 @@ function messageText(content: unknown): string {
       .join('\n');
   }
   return '';
+}
+
+/** How much history a turn carries when the request does not say. */
+const DEFAULT_HISTORY = 10;
+const MAX_HISTORY = 50;
+
+/**
+ * The history window a request asked for, bounded.
+ *
+ * Read on its own rather than as part of the request's `context`: it is a
+ * request option, not something the agent is told about the user, and the
+ * context object it used to ride in is no longer passed through.
+ */
+function historyWindow(requestContext: unknown): number {
+  const raw =
+    requestContext && typeof requestContext === 'object'
+      ? (requestContext as { maxContextMessages?: unknown }).maxContextMessages
+      : undefined;
+  const n = typeof raw === 'number' ? Math.floor(raw) : NaN;
+  return n >= 1 ? Math.min(n, MAX_HISTORY) : DEFAULT_HISTORY;
 }
 
 /**
@@ -76,11 +99,9 @@ function parseDoneFrame(transcript: string): AgentChatResponse | null {
 
 export class ChatController {
   private chatService: ChatService;
-  private pantryService: PantryService;
 
   constructor() {
     this.chatService = new ChatService();
-    this.pantryService = new PantryService();
   }
 
   async getSessions(req: Request, res: Response) {
@@ -148,18 +169,21 @@ export class ChatController {
     const { title, initialMessage } = req.body;
 
     try {
+      // Read once and used twice: the session keeps a snapshot, and the
+      // opening message (if any) is sent with the same context.
+      const caller = await buildCallerContext(req.user!);
       const sessionData = {
         userId,
         title: title || null,
         isActive: true,
-        context: await this.buildUserContext(userId),
+        context: caller.context,
       };
 
       const session = await this.chatService.createSession(sessionData);
 
       // If there's an initial message, send it to AI
       if (initialMessage) {
-        await this.sendMessageToAI(session.id, req.user!, initialMessage);
+        await this.sendMessageToAI(session.id, caller, initialMessage);
       }
 
       logger.info('Chat session created', {
@@ -292,20 +316,24 @@ export class ChatController {
         timestamp: new Date(),
       });
 
-      // Build context for AI
-      const aiContext = await this.buildUserContext(userId, requestContext, content);
-      
+      // The request's own context can only add constraints to the profile's,
+      // never replace them — see `buildCallerContext`.
+      const caller = await buildCallerContext(
+        req.user!,
+        readContextAdditions(requestContext)
+      );
+
       // Get recent messages for conversation history
       const recentMessages = await this.chatService.getRecentMessages(
         sessionId,
-        requestContext?.maxContextMessages || 10
+        historyWindow(requestContext)
       );
 
       // Hand the turn to the agent. Model selection and retrieval are its
       // decisions now — it owns the recipe index and the token budget.
       const startedAt = Date.now();
       const aiResponse = await agentClient.chat(
-        this.buildAgentRequest(req, recentMessages, aiContext, sessionId)
+        this.buildAgentRequest(recentMessages, caller, sessionId)
       );
       const agentLatencyMs = Date.now() - startedAt;
 
@@ -399,10 +427,13 @@ export class ChatController {
       timestamp: new Date(),
     });
 
-    const aiContext = await this.buildUserContext(userId, requestContext, content);
+    const caller = await buildCallerContext(
+      req.user!,
+      readContextAdditions(requestContext)
+    );
     const recentMessages = await this.chatService.getRecentMessages(
       sessionId,
-      requestContext?.maxContextMessages || 10
+      historyWindow(requestContext)
     );
 
     const controller = new AbortController();
@@ -416,7 +447,7 @@ export class ChatController {
     // here can still be an honest HTTP error handled by the error middleware,
     // rather than a 200 carrying an error frame.
     const upstream = await agentClient.chatStream(
-      this.buildAgentRequest(req, recentMessages, aiContext, sessionId),
+      this.buildAgentRequest(recentMessages, caller, sessionId),
       controller.signal
     );
 
@@ -485,151 +516,15 @@ export class ChatController {
     }
   }
 
-  async generateRecipe(req: Request, res: Response) {
-    const userId = req.user!.id;
-    const { ingredients, preferences } = req.body;
-
-    if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
-      throw new ValidationError('Ingredients array is required');
-    }
-
-    try {
-      const aiResponse = await agentClient.generateRecipe({
-        ingredients,
-        preferences,
-        user: {
-          id: userId,
-          subscriptionTier: req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-        },
-      });
-
-      logger.info('Recipe generated via chat', {
-        userId,
-        ingredientCount: ingredients.length,
-      });
-
-      res.json({
-        success: true,
-        data: aiResponse,
-        metadata: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error('Failed to generate recipe:', error);
-      throw error;
-    }
-  }
-
-  async generateMealPlan(req: Request, res: Response) {
-    const userId = req.user!.id;
-    const { days, preferences } = req.body;
-
-    if (!days || days < 1 || days > 14) {
-      throw new ValidationError('Days must be between 1 and 14');
-    }
-
-    // Check if user has premium for multi-day plans
-    if (days > 1 && req.user!.subscriptionTier !== 'PREMIUM') {
-      throw new ValidationError('Premium subscription required for multi-day meal plans');
-    }
-
-    try {
-      const context = await this.buildUserContext(userId);
-      const aiResponse = await agentClient.generateMealPlan({
-        days,
-        preferences,
-        context,
-        user: {
-          id: userId,
-          subscriptionTier: req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-        },
-      });
-
-      logger.info('Meal plan generated via chat', {
-        userId,
-        days,
-      });
-
-      res.json({
-        success: true,
-        data: aiResponse,
-        metadata: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error('Failed to generate meal plan:', error);
-      throw error;
-    }
-  }
-
-  async getCookingTips(req: Request, res: Response) {
-    const { topic } = req.body;
-
-    if (!topic) {
-      throw new ValidationError('Topic is required');
-    }
-
-    try {
-      const aiResponse = await agentClient.cookingTips({ topic });
-
-      logger.info('Cooking tips requested', {
-        userId: req.user!.id,
-        topic,
-      });
-
-      res.json({
-        success: true,
-        data: aiResponse,
-        metadata: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error('Failed to get cooking tips:', error);
-      throw error;
-    }
-  }
-
-  async analyzeNutrition(req: Request, res: Response) {
-    const { foodItems } = req.body;
-
-    if (!foodItems || !Array.isArray(foodItems) || foodItems.length === 0) {
-      throw new ValidationError('Food items array is required');
-    }
-
-    try {
-      const aiResponse = await agentClient.analyzeNutrition({ foodItems });
-
-      logger.info('Nutrition analysis requested', {
-        userId: req.user!.id,
-        itemCount: foodItems.length,
-      });
-
-      res.json({
-        success: true,
-        data: aiResponse,
-        metadata: {
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error('Failed to analyze nutrition:', error);
-      throw error;
-    }
-  }
-
   /**
    * Send the opening message of a brand-new session.
    *
-   * Takes the tier explicitly rather than re-reading it: the caller already has
-   * an authenticated request, and the agent needs it to know whether pantry
-   * context applies.
+   * Takes the caller context the session was created with rather than reading
+   * the profile a second time.
    */
   private async sendMessageToAI(
     sessionId: string,
-    user: { id: string; subscriptionTier: string },
+    caller: CallerContext,
     message: string
   ) {
     await this.chatService.addMessage(sessionId, {
@@ -638,20 +533,11 @@ export class ChatController {
       timestamp: new Date(),
     });
 
-    const context = await this.buildUserContext(user.id);
     const recentMessages = await this.chatService.getRecentMessages(sessionId, 5);
 
-    const aiResponse = await agentClient.chat({
-      messages: recentMessages.map(msg => ({
-        role: msg.role.toLowerCase() as ChatRequest['messages'][number]['role'],
-        content: messageText(msg.content),
-      })),
-      user: {
-        id: user.id,
-        subscriptionTier: user.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-      },
-      context,
-    });
+    const aiResponse = await agentClient.chat(
+      this.buildAgentRequest(recentMessages, caller)
+    );
 
     await this.chatService.addMessage(sessionId, {
       role: 'ASSISTANT',
@@ -702,14 +588,13 @@ export class ChatController {
   /**
    * Assemble the agent request from persisted state.
    *
-   * Everything here is a database read the agent is not allowed to make: who
-   * the user is, what they keep in their pantry, what they can't eat. The agent
-   * gets it as data and gives back prose.
+   * Who the user is and what they can't eat come from `buildCallerContext`,
+   * the one producer of both — database reads the agent is not allowed to
+   * make. The agent gets them as data and gives back prose.
    */
   private buildAgentRequest(
-    req: Request,
     recentMessages: { role: string; content: unknown }[],
-    context: AgentContext,
+    { user, context }: CallerContext,
     sessionId?: string
   ): ChatRequest {
     return {
@@ -717,11 +602,7 @@ export class ChatController {
         role: msg.role.toLowerCase() as ChatRequest['messages'][number]['role'],
         content: messageText(msg.content),
       })),
-      user: {
-        id: req.user!.id,
-        subscriptionTier:
-          req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
-      },
+      user,
       context,
       // The chat session, so the agent's ephemeral graph state lines up with
       // the conversation the user is actually having. Deliberately the session
@@ -733,53 +614,5 @@ export class ChatController {
       // working channels, holding nothing the request did not already carry.
       ...(sessionId ? { options: { threadId: sessionId } } : {}),
     };
-  }
-
-  /**
-   * What the API knows about the user.
-   *
-   * This used to do two unrelated jobs — load the profile and pantry, and run
-   * recipe retrieval. The second half moved to the agent, which owns the recipe
-   * index; that division is the service boundary. What remains is purely a
-   * database read.
-   */
-  private async buildUserContext(
-    userId: string,
-    requestContext?: any,
-    _userMessage?: string
-  ): Promise<AgentContext> {
-    try {
-      const user = await this.chatService.getUserProfile(userId);
-
-      // Pantry-aware suggestions are a premium feature.
-      let pantryItems: string[] = [];
-      let pantryNames: string[] = [];
-      if (user?.subscriptionTier === 'PREMIUM') {
-        const pantryResult = await this.pantryService.getItems(userId, { limit: 50 });
-        pantryItems = pantryResult.items.map(
-          item => `${item.name} (${item.quantity} ${item.unit})`
-        );
-        pantryNames = pantryResult.items.map(item => item.name);
-      }
-
-      return {
-        userPreferences: user?.profile,
-        currentPantryItems: pantryItems,
-        pantryNames,
-        dietaryRestrictions: user?.profile?.dietaryRestrictions || [],
-        healthGoals: user?.profile?.healthGoals || [],
-        allergies: user?.profile?.allergies || [],
-        ...requestContext,
-      };
-    } catch (error) {
-      logger.warn('Failed to build user context:', error);
-      return {
-        currentPantryItems: [],
-        pantryNames: [],
-        dietaryRestrictions: [],
-        healthGoals: [],
-        allergies: [],
-      };
-    }
   }
 }

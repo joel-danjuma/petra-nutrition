@@ -2,16 +2,12 @@ import http from 'http';
 import https from 'https';
 import {
   AGENT_INTERNAL_KEY_HEADER,
-  type AnalyzeNutritionRequest,
   type ChatRequest,
   type ChatResponse,
-  type CookingTipsRequest,
   type EnrichRecipeRequest,
   type EnrichRecipeResponse,
   type IndexRebuildRequest,
   type IndexRebuildResponse,
-  type GenerateMealPlanRequest,
-  type GenerateRecipeRequest,
   type RetrieveRequest,
   type RetrievedRecipe,
   type ReceiptRequest,
@@ -180,24 +176,8 @@ class AgentClient {
     return this.post('/v1/recipes/retrieve', request, TIMEOUTS.retrieve);
   }
 
-  generateRecipe(request: GenerateRecipeRequest): Promise<ChatResponse> {
-    return this.post('/v1/recipes/generate', request, TIMEOUTS.chat);
-  }
-
   enrichRecipe(request: EnrichRecipeRequest): Promise<EnrichRecipeResponse> {
     return this.post('/v1/recipes/enrich', request, TIMEOUTS.chat);
-  }
-
-  generateMealPlan(request: GenerateMealPlanRequest): Promise<ChatResponse> {
-    return this.post('/v1/meal-plans/generate', request, TIMEOUTS.chat);
-  }
-
-  cookingTips(request: CookingTipsRequest): Promise<ChatResponse> {
-    return this.post('/v1/cooking-tips', request, TIMEOUTS.chat);
-  }
-
-  analyzeNutrition(request: AnalyzeNutritionRequest): Promise<ChatResponse> {
-    return this.post('/v1/nutrition/analyze', request, TIMEOUTS.chat);
   }
 
   recognizeImage(request: VisionRequest): Promise<VisionResponse> {
