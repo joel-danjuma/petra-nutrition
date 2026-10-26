@@ -168,7 +168,12 @@ function decodeFrame(raw: string): DecodedFrame | null {
  */
 export function createFrameDecoder(): FrameDecoder {
   let buffer = '';
-  let textDecoder: TextDecoder | undefined;
+  // Typed structurally rather than as `TextDecoder`: under Node's types without
+  // the DOM lib, `TextDecoder` is declared only as a value, and naming it as a
+  // type fails to compile in every package that type-checks this file.
+  let textDecoder:
+    | { decode(input?: Uint8Array, options?: { stream?: boolean }): string }
+    | undefined;
 
   const drain = (final: boolean): DecodedFrame[] => {
     // Normalise CRLF and lone CR, both legal SSE line endings. Mid-stream, a
