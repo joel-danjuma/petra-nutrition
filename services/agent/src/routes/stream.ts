@@ -1,5 +1,11 @@
 import type { Request, Response } from 'express';
-import { chatRequestSchema, type ChatRequest } from '@petra/agent-contract';
+import {
+  chatRequestSchema,
+  encodeFrame,
+  HEARTBEAT_FRAME,
+  type ChatRequest,
+  type StreamEventInput,
+} from '@petra/agent-contract';
 
 import { runChatTurnStreaming } from '../orchestrator';
 import { logger } from '../utils/logger';
@@ -8,8 +14,13 @@ import { logger } from '../utils/logger';
  *  waiting on a slow first token. */
 const HEARTBEAT_MS = 15_000;
 
-const send = (res: Response, event: string, data: unknown) => {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+/**
+ * Write one frame. The wire format lives in the contract beside the decoder
+ * that reads it, so the two ends cannot drift; typing the event here means a
+ * payload the contract would reject does not compile.
+ */
+const send = (res: Response, event: StreamEventInput) => {
+  res.write(encodeFrame(event));
 };
 
 /**
@@ -57,7 +68,10 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   res.flushHeaders?.();
 
   const controller = new AbortController();
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
+  const heartbeat = setInterval(
+    () => res.write(HEARTBEAT_FRAME),
+    HEARTBEAT_MS
+  );
 
   const cleanup = () => {
     clearInterval(heartbeat);
@@ -82,15 +96,17 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   try {
     const response = await runChatTurnStreaming(
       request,
-      chunk => send(res, 'chunk', { content: chunk }),
+      chunk => send(res, { event: 'chunk', data: { content: chunk } }),
       controller.signal,
       {
-        onNode: (node, label) => send(res, 'node', { node, label }),
-        onInterrupt: (question, options) => send(res, 'interrupt', { question, options }),
+        onNode: (node, label) =>
+          send(res, { event: 'node', data: { node, label } }),
+        onInterrupt: (question, options) =>
+          send(res, { event: 'interrupt', data: { question, options } }),
       }
     );
 
-    send(res, 'done', response);
+    send(res, { event: 'done', data: response });
 
     logger.info('Chat stream served', {
       userId: request.user.id,
@@ -112,7 +128,10 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       error instanceof Error ? error.message : 'AI streaming service is unavailable';
 
     logger.error('Chat stream failed', { message });
-    send(res, 'error', { code: 'AGENT_STREAM_FAILED', message });
+    send(res, {
+      event: 'error',
+      data: { code: 'AGENT_STREAM_FAILED', message },
+    });
   } finally {
     cleanup();
     if (!res.writableEnded) res.end();
