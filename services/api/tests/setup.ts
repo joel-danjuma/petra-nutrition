@@ -20,25 +20,6 @@ jest.mock('../src/config/redis', () => ({
 }));
 
 // Mock external APIs
-jest.mock('groq-sdk', () => {
-  return jest.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: jest.fn().mockResolvedValue({
-          choices: [{
-            message: {
-              content: 'Mocked AI response'
-            }
-          }],
-          usage: {
-            total_tokens: 100
-          }
-        }),
-      },
-    },
-  }));
-});
-
 jest.mock('axios', () => ({
   create: jest.fn(() => ({
     get: jest.fn(),

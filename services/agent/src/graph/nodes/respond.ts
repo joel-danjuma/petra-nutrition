@@ -180,8 +180,7 @@ export async function respond(state: GraphStateType): Promise<GraphUpdate> {
 
   const messages = [
     // Terse: a chat turn is read beside a card that already carries the
-    // timings, ingredients and macros. The single-shot endpoints keep the
-    // standard length.
+    // timings, ingredients and macros.
     { role: 'system' as const, content: buildSystemPrompt(context, { brevity: 'terse' }) },
     ...state.messages,
     ...(briefing ? [{ role: 'system' as const, content: briefing }] : []),

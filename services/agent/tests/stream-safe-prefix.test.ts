@@ -1,4 +1,4 @@
-import { streamSafePrefix, stripMarkdown } from '../src/llm/groq';
+import { streamSafePrefix, stripMarkdown } from '../src/llm/strip-markdown';
 
 /**
  * These guard the one place where the split could reintroduce the formatting
