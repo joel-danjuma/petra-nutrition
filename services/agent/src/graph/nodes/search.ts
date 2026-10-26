@@ -9,11 +9,11 @@ import type { GraphStateType, GraphUpdate } from '../state';
 /**
  * Grounded recommendation over the recipe corpus.
  *
- * Behaviourally unchanged from `retrieveForTurn` — same `RetrievalService`,
- * same signals, same never-fail-the-chat posture — with one addition that is
- * the whole reason it is a node rather than a function call: it decides whether
- * what it found actually answers the question, and that decision is an edge in
- * the graph.
+ * Behaviourally unchanged from the pre-graph retrieval step — same
+ * `RetrievalService`, same signals, same never-fail-the-chat posture — with
+ * one addition that is the whole reason it is a node rather than a function
+ * call: it decides whether what it found actually answers the question, and
+ * that decision is an edge in the graph.
  *
  * When the answer is no, the turn continues to `compose_recipe` with these
  * hits as a seed rather than stopping at "here is the nearest thing I have".

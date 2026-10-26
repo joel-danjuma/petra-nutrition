@@ -5,7 +5,7 @@ import type {
 
 import { analyse } from '../nutrition';
 import { logger } from '../utils/logger';
-import { AIChatService } from './groq';
+import { modelFor } from './provider';
 
 /**
  * Fill in what the recipe import doesn't carry: nutrition, prep/cook times, a
@@ -164,14 +164,26 @@ async function reconcileNutrition(
   }
 }
 
+/**
+ * Extract and validate, then reconcile nutrition.
+ *
+ * The model is resolved through `modelFor('enrich')`, the same seam the graph
+ * uses, so its settings live in one row of the provider table rather than in
+ * a boolean at the call site. That row pins the fast model and JSON mode:
+ * this is structured extraction against a strict schema, and
+ * `validateEnrichment` rejects anything malformed. Running it on the large
+ * model once drained the whole 200k/day token budget in one pass and left chat
+ * unusable.
+ */
 export async function enrichRecipe(
-  ai: AIChatService,
   recipe: EnrichRecipeRequest
 ): Promise<EnrichRecipeResponse> {
   const ingredients = recipe.ingredients
     .map(i => `${i.amount} ${i.unit} ${i.name}`.trim())
     .join('; ');
-  const steps = recipe.instructions.map(s => `${s.step}. ${s.instruction}`).join('\n');
+  const steps = recipe.instructions
+    .map(s => `${s.step}. ${s.instruction}`)
+    .join('\n');
 
   const userMessage = `Recipe: ${recipe.title}
 Cuisine: ${recipe.cuisine ?? 'unspecified'}
@@ -180,20 +192,15 @@ Ingredients: ${ingredients}
 Method:
 ${steps}`;
 
-  const response = await ai.sendMessage(
-    [
-      { role: 'system', content: PROMPT },
-      { role: 'user', content: userMessage },
-    ],
-    undefined,
-    // Fast model: this is structured extraction against a strict schema, and
-    // `validateEnrichment` rejects anything malformed. Running it on the large
-    // model drained the whole 200k/day token budget in one pass and left chat
-    // unusable.
-    false
-  );
+  const { text } = await modelFor('enrich').complete([
+    { role: 'system', content: PROMPT },
+    { role: 'user', content: userMessage },
+  ]);
 
-  const enrichment = validateEnrichment(parseJson(response.content), recipe.instructions.length);
+  const enrichment = validateEnrichment(
+    parseJson(text),
+    recipe.instructions.length
+  );
 
   return reconcileNutrition(enrichment, recipe);
 }

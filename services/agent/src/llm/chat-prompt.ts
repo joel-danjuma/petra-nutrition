@@ -1,16 +1,17 @@
 import { normalise } from '../retrieval/terms';
 import { stripMarkdown } from './strip-markdown';
-import type { ChatContext, ChatMessage, ChatResponse, RetrievedRecipeContext } from './types';
+import type {
+  ChatContext,
+  ChatResponse,
+  RetrievedRecipeContext,
+} from './types';
 
 /**
  * Building the chat prompt, and reading the reply back.
  *
- * Extracted from `AIChatService` when the graph arrived, because two callers
- * now need it: the graph's `respond` node, and the `/v1/cooking-tips`,
- * `/v1/nutrition/analyze` and `/v1/meal-plans/generate` endpoints, which are
- * single-shot model calls and gain nothing from a graph. These are pure
- * functions of their inputs — no provider, no client, no keys — which is what
- * lets both use them without either depending on the other.
+ * Its one caller is the graph's `respond` node. It is kept apart from that
+ * node because these are pure functions of their inputs — no provider, no
+ * client, no keys — which is what lets them be tested without a model.
  *
  * `extractRecipeRef` in particular is the thing that must not be duplicated: it
  * decides which library recipe a reply is recommending, and two
@@ -30,9 +31,9 @@ export interface PromptOptions {
    * How much room the reply gets.
    *
    * `terse` is for a chat turn, which is read on a phone beside a recipe card
-   * that already carries the timings, ingredients and macros. `standard` is for
-   * the single-shot endpoints — a seven-day meal plan cannot be written in
-   * three sentences — so it stays the default and those callers are untouched.
+   * that already carries the timings, ingredients and macros. `standard` is
+   * the longer form for a reply that stands on its own, with no card beside
+   * it.
    */
   brevity?: 'terse' | 'standard';
 }
@@ -155,11 +156,6 @@ RULES FOR THIS TURN — these override the general guidance above:
 
   return systemPrompt;
 }
-
-export const buildSystemMessage = (context?: ChatContext): ChatMessage => ({
-  role: 'system',
-  content: buildSystemPrompt(context),
-});
 
 /** Which strategy identified the recipe. Reported so the weakest can be measured. */
 export type RecipeRefMatch = 'marker' | 'title' | 'fuzzy' | 'none';

@@ -8,15 +8,16 @@ import {
 
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import type { ChatMessage } from './groq';
+import type { ChatMessage } from './types';
 
 /**
  * The provider seam.
  *
- * Every model call in the graph resolves through `modelFor(node)`. Nodes name a
- * *role* — "the thing that classifies intent", "the thing that writes a
- * recipe" — and this file decides which model and which settings serve it. No
- * node imports `groq-sdk`, `@langchain/groq`, or a model id.
+ * Every model call in the agent resolves through `modelFor(node)` — the graph's
+ * nodes and recipe enrichment alike. Callers name a *role* — "the thing that
+ * classifies intent", "the thing that writes a recipe" — and this file decides
+ * which model and which settings serve it. No caller imports `@langchain/groq`
+ * or a model id.
  *
  * The reason to build the seam now rather than when it is needed: the three
  * nodes want genuinely different models. Routing is a cheap classification that
@@ -38,7 +39,10 @@ export type NodeName =
   | 'compose'
   | 'nutrition'
   | 'respond'
-  /** Not a graph node, but the same seam: structured extraction over an import. */
+  /**
+   * Not a graph node, but the same seam: structured extraction over an
+   * import, served by `/v1/recipes/enrich`.
+   */
   | 'enrich';
 
 type ProviderName = 'groq';
@@ -165,11 +169,6 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  * that was hit (per-minute vs per-day) and how long to wait. Surfacing that
  * distinction matters: a per-minute limit clears on its own in seconds, while a
  * per-day cap means no amount of retrying will help today.
- *
- * Duplicated in shape from `llm/groq.ts` rather than shared, because that one
- * is bound to `groq-sdk`'s error objects and this one to LangChain's wrapping
- * of them. Merging them would couple the seam to the thing it exists to
- * abstract.
  */
 export function parseRateLimit(
   error: unknown
