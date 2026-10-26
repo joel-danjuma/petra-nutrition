@@ -140,14 +140,20 @@ import them, so a contract drift is a type error at build time rather than a
 malformed body in production.
 
 Endpoints (all under `/v1`, all requiring `X-Internal-Key`):
-`chat`, `chat/stream`, `recipes/retrieve`, `recipes/generate`, `recipes/enrich`,
-`meal-plans/generate`, `cooking-tips`, `nutrition/analyze`,
-`vision/pantry-items`, `index/rebuild`. `/health` is unauthenticated.
+`chat`, `chat/stream`, `recipes/retrieve`, `recipes/enrich`,
+`vision/pantry-items`, `vision/receipt`, `index/rebuild`. `/health` is
+unauthenticated.
 
 `chatResponseSchema` carries optional `generatedRecipe`, `nutrition`,
 `assumptions` and `compromises`; the SSE envelope adds `node` progress frames
 and an `interrupt` frame. All additive and optional, so a client that ignores
 them sees the behaviour it saw before.
+
+SSE frames are written and read **only** through the contract's codec
+(`frames.ts`: `encodeFrame`, `createFrameDecoder`). The agent encodes with it,
+the API decodes the `done` frame with it, and clients decode with it. Never
+hand-format or hand-parse `event:`/`data:` lines. The decoder uses no Node APIs,
+so it runs in Node, browsers and React Native alike.
 
 ### The agent's Prisma schema is generated
 
@@ -162,7 +168,11 @@ model at boot, turning a drifted column into a failed deploy.
 
 Express + TypeScript, layered:
 - `src/routes/` — Route definitions (thin, delegates to controllers)
-- `src/controllers/` — Request handling and response shaping
+- `src/controllers/` — Request handling and response shaping. The chat
+  controller is HTTP framing only; a chat turn lives in
+  `services/chat-turn.ts` (`ChatTurns.reply` / `ChatTurns.stream`), which owns
+  persisting both messages, the one reply→stored-metadata mapping, and the
+  `AgentPort` seam (`agentClient` in production, a fake agent in tests)
 - `src/services/` — Domain logic, plus `agent-client.ts`, the typed HTTP client
   for the agent (keep-alive pool, tiered timeouts, no retries on generation),
   and `caller-context.ts`, the **only** producer of an agent request's `user`
@@ -187,11 +197,11 @@ Express + TypeScript, layered:
   per-node config block to a chat model. Nodes name a role, not a model, and
   never import a provider SDK. Groq is the only adapter registered; an
   OpenRouter adapter and an eval harness slot in behind the same interface.
-- `src/llm/chat-prompt.ts` — The system prompt and the reply parser, shared by
-  the graph's respond node and the single-shot endpoints.
-- `src/llm/groq.ts` — The legacy `groq-sdk` client, still serving
-  `/v1/cooking-tips`, `/v1/nutrition/analyze`, `/v1/meal-plans/generate` and
-  `/v1/recipes/generate` — single model calls that gain nothing from a graph.
+  It is the **only** way to reach a model — enrichment included — and the
+  per-node table is the only model-choice policy. Tests register `FakeModel`
+  with `setModel(node, …)`.
+- `src/llm/chat-prompt.ts` — The system prompt and the reply parser used by the
+  graph's respond node.
 - `src/llm/enrich.ts` — Structured recipe extraction and its plausibility
   checks. Its nutrition now routes through `src/nutrition` so the recipe
   screen's macros and the chat's cannot disagree about the same dish.
