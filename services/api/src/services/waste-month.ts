@@ -5,6 +5,7 @@
  * Pure — the caller fetches the logs — so the arithmetic is testable without
  * a database.
  */
+import { ingredientKey } from '@petra/food-measures';
 
 export interface WasteLogRow {
   itemName: string;
@@ -39,8 +40,11 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 export const startOfMonth = (now: Date): Date =>
   new Date(now.getFullYear(), now.getMonth(), 1);
 
-/** Normalise item names so "Coriander" and "coriander " count as one. */
-const key = (name: string) => name.trim().toLowerCase();
+/**
+ * One key per ingredient, so "Coriander", "coriander " and "Cilantro" count as
+ * one — the identity the pantry match and shopping list use.
+ */
+const key = ingredientKey;
 
 export function summariseMonth(
   logs: readonly WasteLogRow[],

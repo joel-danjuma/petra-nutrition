@@ -1,6 +1,7 @@
 /**
  * Cook mode's pure rules, shared by web and mobile.
  */
+import { FORM_WORDS, ingredientWords } from '@petra/food-measures';
 
 /** 90 → "1:30", 605 → "10:05". */
 export const formatTimer = (seconds: number): string => {
@@ -29,65 +30,26 @@ export const splitStep = (
   return { title: m[1].replace(/[.!]$/, ''), body: m[2] };
 };
 
-const DESCRIPTORS = new Set([
-  'fresh',
-  'large',
-  'small',
-  'ripe',
-  'chopped',
-  'sliced',
-  'diced',
-  'minced',
-  'grated',
-  'crushed',
-  'whole',
-  'extra',
-  'virgin',
-  'free',
-  'range',
-  'of',
-  'and',
-  'or',
-  'the',
-  'tin',
-  'tins',
-  'can',
-  'tinned',
-  'canned',
-  'clove',
-  'cloves',
-  'bunch',
-  'thick',
-]);
-
-const stem = (w: string) =>
-  w.endsWith('oes') && w.length > 4
-    ? w.slice(0, -2)
-    : w.endsWith('s') && w.length > 3
-      ? w.slice(0, -1)
-      : w;
-
-const words = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z\s-]/g, ' ')
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .map(stem);
-
 /**
  * The ingredients a step mentions, in recipe order — cook mode's "For this
  * step" panel. An ingredient counts when any of its significant words appears
  * in the step ("olive oil" in "warm the oil"; "tinned tomatoes" in "add the
  * tomatoes").
+ *
+ * Words are `ingredientWords` from `@petra/food-measures`, the identity the
+ * pantry match uses, so "scallions" in the list finds "spring onions" in the
+ * method. Form words ("tinned", "ground") are set aside here: a step says
+ * "add the tomatoes", not "add the tinned tomatoes".
  */
 export const ingredientsForStep = <T extends { name: string }>(
   step: string,
   ingredients: readonly T[]
 ): T[] => {
-  const inStep = new Set(words(step));
+  const inStep = new Set(ingredientWords(step));
   return ingredients.filter(i => {
-    const key = words(i.name).filter(w => !DESCRIPTORS.has(w) && w.length > 2);
+    const key = ingredientWords(i.name).filter(
+      w => !FORM_WORDS.has(w) && w.length > 2
+    );
     return key.some(w => inStep.has(w));
   });
 };

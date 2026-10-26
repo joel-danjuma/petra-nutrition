@@ -1,3 +1,5 @@
+import { covers, isStaple } from '@petra/food-measures';
+
 import { logger } from '../utils/logger';
 import { embed } from './embedding';
 import {
@@ -10,7 +12,7 @@ import {
   type Candidate,
   type HydratedRecipe,
 } from './sql';
-import { expandAllergen, expandDiet, normalise } from './terms';
+import { expandAllergen, expandDiet } from './terms';
 
 /**
  * Hybrid recipe retrieval.
@@ -149,13 +151,12 @@ export class RetrievalService {
     if (!fused.length) return [];
 
     const hydrated = await hydrate(fused.slice(0, limit * 3).map(f => f.id));
-    const pantryTokens = new Set(pantry.flatMap(normalise));
 
     const results: RetrievedRecipe[] = [];
     for (const { id, score, reasons } of fused) {
       const recipe = hydrated.get(id);
       if (!recipe) continue;
-      results.push(this.shape(recipe, score, reasons, pantryTokens, dietaryRestrictions));
+      results.push(this.shape(recipe, score, reasons, pantry, dietaryRestrictions));
       if (results.length >= limit) break;
     }
 
@@ -184,7 +185,7 @@ export class RetrievalService {
 
     const [pantryHits, lexicalHits, semanticHits] = await Promise.all([
       pantry.length
-        ? pantryCandidates(pantry.flatMap(normalise), blocked, ownerId).catch(error => {
+        ? pantryCandidates(pantry, blocked, ownerId).catch(error => {
             logger.warn('Pantry-overlap retrieval failed', error);
             return [] as Candidate[];
           })
@@ -235,20 +236,24 @@ export class RetrievalService {
       .sort((a, b) => b.score - a.score);
   }
 
-  /** Turn a hydrated row plus its fused score into the shape callers expect. */
+  /**
+   * Turn a hydrated row plus its fused score into the shape callers expect.
+   *
+   * An ingredient is matched when some pantry item `covers` it — every word of
+   * the pantry name, not any one, so "Olive oil" does not count as the sesame
+   * oil a recipe needs. A staple is never missing: nobody is sent out for salt,
+   * and counting it would sink a dish the user can actually make tonight.
+   */
   private shape(
     recipe: HydratedRecipe,
     score: number,
     reasons: string[],
-    pantryTokens: Set<string>,
+    pantry: string[],
     dietaryRestrictions: string[]
   ): RetrievedRecipe {
-    const matched = recipe.ingredients.filter(n =>
-      normalise(n).some(t => pantryTokens.has(t))
-    );
-    const missing = recipe.ingredients.filter(
-      n => !normalise(n).some(t => pantryTokens.has(t))
-    );
+    const inPantry = (n: string) => pantry.some(p => covers(p, n));
+    const matched = recipe.ingredients.filter(inPantry);
+    const missing = recipe.ingredients.filter(n => !inPantry(n) && !isStaple(n));
 
     // Dietary tags are a nudge, not a filter — the tag vocabulary upstream is
     // inconsistent, so absence is not proof a recipe is unsuitable.
@@ -266,7 +271,12 @@ export class RetrievalService {
       dietaryTags: recipe.dietaryTags,
       matched,
       missing,
-      coverage: recipe.ingredients.length ? matched.length / recipe.ingredients.length : 0,
+      // What the user has, staples included, as a share of the whole dish.
+      // Nothing is "had" when no pantry was given to measure against.
+      coverage:
+        pantry.length && recipe.ingredients.length
+          ? 1 - missing.length / recipe.ingredients.length
+          : 0,
       score: tagged ? score * 1.15 : score,
       reasons: tagged ? [...reasons, 'diet'] : reasons,
     };

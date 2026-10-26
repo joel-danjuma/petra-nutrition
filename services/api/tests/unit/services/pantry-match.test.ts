@@ -2,21 +2,12 @@ import {
   describeQuantity,
   findInPantry,
   matchRecipeToPantry,
-  nameWords,
 } from '../../../src/services/pantry-match';
 
 const item = (name: string, quantity = 1, unit = 'pcs') => ({
   name,
   quantity,
   unit,
-});
-
-describe('nameWords', () => {
-  it('drops descriptors and makes words singular', () => {
-    expect(nameWords('2 large free-range eggs')).toEqual(['egg']);
-    expect(nameWords('Tinned tomatoes')).toEqual(['tinned', 'tomato']);
-    expect(nameWords('Garlic cloves, crushed')).toEqual(['garlic']);
-  });
 });
 
 describe('findInPantry', () => {
@@ -60,6 +51,23 @@ describe('findInPantry', () => {
 
   it('returns null for an empty or descriptor-only ingredient', () => {
     expect(findInPantry('to taste', pantry)).toBeNull();
+  });
+
+  it('ignores preparation words, so unsalted butter covers butter', () => {
+    // A deliberate change: "unsalted" used to count as part of the name, so
+    // the butter in the fridge did not cover a recipe's "butter". It is how
+    // the butter is made, not what it is. Form words still count — see the
+    // tinned tomatoes above.
+    expect(findInPantry('butter', [item('Unsalted butter')])?.name).toBe(
+      'Unsalted butter'
+    );
+  });
+
+  it('matches plurals and synonyms', () => {
+    expect(findInPantry('apple', [item('Apples')])?.name).toBe('Apples');
+    expect(findInPantry('2 courgettes', [item('Zucchini')])?.name).toBe(
+      'Zucchini'
+    );
   });
 });
 
@@ -115,6 +123,26 @@ describe('matchRecipeToPantry', () => {
     expect(m.toBuy).toBe(1);
     expect(m.clears).toBe(1);
     expect(m.ingredients[0].have).toBe('150 g');
+  });
+
+  it('treats a staple as had even when the pantry does not record it', () => {
+    const m = matchRecipeToPantry(
+      [
+        { id: 's1', name: 'Salt' },
+        { id: 's2', name: 'Extra virgin olive oil' },
+        { id: 's3', name: 'Garlic powder' },
+        { id: 'n1', name: 'Fresh basil' },
+      ],
+      pantry,
+      NOW
+    );
+    expect(m.ingredients.map(i => [i.ingredientId, i.status])).toEqual([
+      ['s1', 'have'],
+      ['s2', 'have'],
+      ['s3', 'have'],
+      ['n1', 'missing'],
+    ]);
+    expect(m.toBuy).toBe(1);
   });
 
   it('counts a pantry item once however many ingredients use it', () => {

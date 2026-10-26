@@ -1,3 +1,5 @@
+import { estimateGrams } from '@petra/food-measures';
+
 import { prisma } from '../database';
 import { logger } from '../utils/logger';
 import { startOfMonth, summariseMonth } from './waste-month';
@@ -7,18 +9,6 @@ import { startOfMonth, summariseMonth } from './waste-month';
 // anywhere in the schema, so this is deliberately a single flat constant
 // rather than a real pricing model.
 const BLENDED_RATE_PER_GRAM = 0.006;
-
-// Best-effort unit -> grams conversion. Units we can't confidently convert
-// (counts like "bunch"/"head", or ambiguous units) return null rather than
-// guessing.
-function estimateWeightGrams(quantity: number, unit: string): number | null {
-  const u = unit.trim().toLowerCase();
-  if (['g', 'gram', 'grams'].includes(u)) return quantity;
-  if (['kg', 'kilogram', 'kilograms'].includes(u)) return quantity * 1000;
-  if (['ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'].includes(u)) return quantity; // ~water density
-  if (['l', 'liter', 'liters', 'litre', 'litres'].includes(u)) return quantity * 1000;
-  return null;
-}
 
 const DEFAULT_TARGETS = {
   calories: 2150,
@@ -49,7 +39,12 @@ export class AnalyticsService {
     unit: string;
     estimatedWeightGrams?: number;
   }) {
-    const weightGrams = body.estimatedWeightGrams ?? estimateWeightGrams(body.quantity, body.unit);
+    // Best-effort, through the same conversion the nutrition panel uses:
+    // weights exactly, liquids by density, counts by a typical weight ("2
+    // onions" is about 300g). A unit it cannot read stays null, not a guess.
+    const weightGrams =
+      body.estimatedWeightGrams ??
+      estimateGrams(body.itemName, body.quantity, body.unit);
 
     try {
       return await prisma.pantryWasteLog.create({

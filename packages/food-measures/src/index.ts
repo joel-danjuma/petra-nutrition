@@ -108,12 +108,15 @@ export function parseMeasure(raw: string): ParsedMeasure {
 
 /* ------------------------------------------------------------ to grams */
 
-/** Units that are already mass, and what one of them weighs in grams. */
+/**
+ * Units that are already mass, and what one of them weighs in grams — every
+ * spelling the importer and the shopping list have met, at the precise factor.
+ */
 const MASS_G: Record<string, number> = {
   g: 1, gram: 1, grams: 1,
-  kg: 1000,
-  oz: 28.3495,
-  lb: 453.592, lbs: 453.592,
+  kg: 1000, kilogram: 1000, kilograms: 1000,
+  oz: 28.3495, ounce: 28.3495, ounces: 28.3495,
+  lb: 453.592, lbs: 453.592, pound: 453.592, pounds: 453.592,
 };
 
 /**
@@ -121,14 +124,45 @@ const MASS_G: Record<string, number> = {
  *
  * Converted to grams through the ingredient's density, below. UK/metric
  * conventions throughout — a cup is 240ml and a tablespoon 15ml, which is what
- * the recipe corpus this runs on uses.
+ * the recipe corpus this runs on uses. Cups sit here: a cup of milk is milk to
+ * buy. Spoons are their own family, below.
  */
 const VOLUME_ML: Record<string, number> = {
-  ml: 1,
+  ml: 1, millilitre: 1, millilitres: 1, milliliter: 1, milliliters: 1,
   l: 1000, litre: 1000, litres: 1000, liter: 1000, liters: 1000,
   cup: 240, cups: 240,
-  tbsp: 15, tbs: 15, tablespoon: 15, tablespoons: 15,
-  tsp: 5, teaspoon: 5, teaspoons: 5,
+  'fl oz': 29.5735,
+};
+
+/**
+ * Spoon measures, in teaspoons, and a teaspoon is 5ml.
+ *
+ * A family of their own because a shopper adds tablespoons to teaspoons, not
+ * to litres: 2 tbsp + 4 tsp is "3.5 tbsp", not "50 ml". `toGrams` still reads
+ * them as volume.
+ */
+const SPOON_TSP: Record<string, number> = {
+  tsp: 1, teaspoon: 1, teaspoons: 1,
+  tbsp: 3, tbs: 3, tablespoon: 3, tablespoons: 3,
+};
+
+const ML_PER_TSP = 5;
+
+/** Bare counts, however they are spelled. */
+const COUNT = new Set([
+  '', 'pcs', 'pc', 'piece', 'pieces', 'whole', 'each', 'x', 'item', 'items',
+]);
+
+/** "Tbsp." and " tbsp" are one unit. */
+const normUnit = (unit: string) =>
+  (unit || '').trim().toLowerCase().replace(/\.$/, '');
+
+/** Millilitres in one of a volume or spoon unit; undefined for anything else. */
+const mlPer = (unit: string): number | undefined => {
+  const u = normUnit(unit);
+  if (VOLUME_ML[u] !== undefined) return VOLUME_ML[u];
+  if (SPOON_TSP[u] !== undefined) return SPOON_TSP[u] * ML_PER_TSP;
+  return undefined;
 };
 
 /**
@@ -281,7 +315,7 @@ export function toGrams(
   amount: number,
   unit: string
 ): GramsResult {
-  const key = (unit || '').toLowerCase().trim();
+  const key = normUnit(unit);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return { grams: null, basis: 'unresolved' };
@@ -291,10 +325,11 @@ export function toGrams(
     return { grams: amount * MASS_G[key], basis: 'mass' };
   }
 
-  if (VOLUME_ML[key] !== undefined) {
+  const ml = mlPer(key);
+  if (ml !== undefined) {
     const d = density(ingredient);
     return {
-      grams: amount * VOLUME_ML[key] * d,
+      grams: amount * ml * d,
       basis: 'volume',
       ...(d !== 1 ? { assumption: `${ingredient} at ${d} g/ml` } : {}),
     };
@@ -314,3 +349,172 @@ export function toGrams(
 
   return { grams: null, basis: 'unresolved' };
 }
+
+/**
+ * Best-effort weight of a quantity, in grams, or null when it cannot be
+ * worked out. `toGrams` without the audit trail, for callers that only want
+ * the number — a waste log's "about 300g of onions".
+ */
+export function estimateGrams(
+  name: string,
+  quantity: number,
+  unit: string
+): number | null {
+  return toGrams(name, quantity, unit).grams;
+}
+
+/* ------------------------------------------------------ quantity arithmetic */
+
+export interface Quantity {
+  quantity: number;
+  unit: string;
+}
+
+/**
+ * Which kind of measure a unit is. `other` is a counting noun that is not a
+ * bare count — "cloves", "bunch", "tins" — and only meets the same noun.
+ */
+export type UnitFamily = 'mass' | 'volume' | 'spoon' | 'count' | 'other';
+
+export function unitFamily(unit: string): UnitFamily {
+  const u = normUnit(unit);
+  if (MASS_G[u] !== undefined) return 'mass';
+  if (VOLUME_ML[u] !== undefined) return 'volume';
+  if (SPOON_TSP[u] !== undefined) return 'spoon';
+  if (COUNT.has(u)) return 'count';
+  return 'other';
+}
+
+/** "cloves" and "clove" are one unit; so are "Tbsp." and "tbsp". */
+export function unitKey(unit: string): string {
+  const u = normUnit(unit);
+  return u.length > 3 && u.endsWith('s') ? u.slice(0, -1) : u;
+}
+
+const round = (n: number) => Math.round(n * 100) / 100;
+const half = (n: number) => Math.round(n * 2) / 2;
+
+/** A weight or a liquid total, in the unit a shopper would use. */
+const present = (family: 'mass' | 'volume', base: number): Quantity =>
+  family === 'mass'
+    ? base >= 1000
+      ? { quantity: round(base / 1000), unit: 'kg' }
+      : { quantity: Math.round(base), unit: 'g' }
+    : base >= 1000
+      ? { quantity: round(base / 1000), unit: 'l' }
+      : { quantity: Math.round(base), unit: 'ml' };
+
+/** Spoons stay spoons: 2 tbsp + 4 tsp is "3.5 tbsp", not "50 ml". */
+const presentSpoons = (tsp: number): Quantity =>
+  tsp >= 3
+    ? { quantity: half(tsp / 3), unit: 'tbsp' }
+    : { quantity: half(tsp) || round(tsp), unit: 'tsp' };
+
+/**
+ * Two quantities of one item on a common scale, or null when they have none.
+ *
+ * Exact where the units allow it — weights with weights, liquids with liquids,
+ * spoons with spoons, counts with counts, the same counting noun with itself.
+ * A weight and a liquid meet in grams through the ingredient's density, the
+ * conversion the nutrition panel uses, and so do a count and a weight when the
+ * item has a known typical weight ("12 leeks" and "4 kg"). Anything else —
+ * "24 garlic" and "76 cloves" — has no honest common scale.
+ */
+function commonScale(
+  name: string,
+  a: Quantity,
+  b: Quantity
+): { a: number; b: number; show: (n: number) => Quantity } | null {
+  const fa = unitFamily(a.unit);
+  const fb = unitFamily(b.unit);
+  const ua = normUnit(a.unit);
+  const ub = normUnit(b.unit);
+
+  if (fa === 'spoon' && fb === 'spoon') {
+    return {
+      a: a.quantity * SPOON_TSP[ua],
+      b: b.quantity * SPOON_TSP[ub],
+      show: presentSpoons,
+    };
+  }
+  if (fa === 'mass' && fb === 'mass') {
+    return {
+      a: a.quantity * MASS_G[ua],
+      b: b.quantity * MASS_G[ub],
+      show: n => present('mass', n),
+    };
+  }
+  if (fa === 'volume' && fb === 'volume') {
+    return {
+      a: a.quantity * VOLUME_ML[ua],
+      b: b.quantity * VOLUME_ML[ub],
+      show: n => present('volume', n),
+    };
+  }
+  if (
+    (fa === 'count' && fb === 'count') ||
+    unitKey(a.unit) === unitKey(b.unit)
+  ) {
+    return {
+      a: a.quantity,
+      b: b.quantity,
+      show: n => ({ quantity: round(n), unit: a.unit || b.unit }),
+    };
+  }
+
+  const weighable = (f: UnitFamily) => f === 'mass' || f === 'volume';
+  if (
+    (weighable(fa) && weighable(fb)) ||
+    (fa === 'mass' && fb === 'count') ||
+    (fa === 'count' && fb === 'mass')
+  ) {
+    const ga = toGrams(name, a.quantity, a.unit).grams;
+    const gb = toGrams(name, b.quantity, b.unit).grams;
+    if (ga !== null && gb !== null) {
+      return { a: ga, b: gb, show: n => present('mass', n) };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Add two quantities of the same item.
+ *
+ * On their common scale where they have one. Where they do not, the first
+ * quantity is kept and the other comes back as `extra`, shown as a note rather
+ * than converted into a number nobody shops by.
+ */
+export function addQuantities(
+  name: string,
+  a: Quantity,
+  b: Quantity
+): Quantity & { extra?: string } {
+  const scale = commonScale(name, a, b);
+  if (scale) return scale.show(scale.a + scale.b);
+  return { ...a, extra: `${round(b.quantity)} ${b.unit}`.trim() };
+}
+
+/**
+ * How much of `need` is left to buy once `have` is used: 1.3 kg needed with
+ * 500 g in the cupboard leaves 800 g. Never below zero — a zero quantity means
+ * the cupboard covers it.
+ *
+ * `incomparable` when the two have no common scale — 2 tins against 400 g,
+ * 3 cloves against a bulb — and the caller must not read that as covered.
+ * Subtracting the bare numbers is how 1.3 kg minus 500 g became negative and
+ * the flour fell off the shopping list.
+ */
+export function subtractQuantity(
+  need: Quantity,
+  have: Quantity,
+  name = ''
+): Quantity | 'incomparable' {
+  const scale = commonScale(name, need, have);
+  if (!scale) return 'incomparable';
+  const left = scale.a - scale.b;
+  if (left <= 0) return { quantity: 0, unit: need.unit };
+  return scale.show(left);
+}
+
+export * from './ingredients';

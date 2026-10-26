@@ -5,6 +5,7 @@ import {
   blockedTermsIn,
   isAllowedIngredient,
   isStaple,
+  STAPLE_TOKENS,
   unknownTokensIn,
   type Constraints,
 } from './constraints';
@@ -195,7 +196,9 @@ export function validateGeneratedRecipe(
       // ignored rather than guessed at — over-flagging rejects good recipes.
       if (!FOOD_TOKENS.has(token)) continue;
       if (licensed.has(token)) continue;
-      if (isStaple(token)) continue;
+      // A word from a staple's name, not a staple: "season with pepper" is
+      // fine prose even though "pepper" alone is not a staple.
+      if (STAPLE_TOKENS.has(token)) continue;
       phantom.add(token);
     }
 

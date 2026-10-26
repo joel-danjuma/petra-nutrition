@@ -1,8 +1,11 @@
 import {
   addQuantities,
+  ingredientKey,
+} from '@petra/food-measures';
+
+import {
   combine,
   dedupeItems,
-  itemKey,
   joinRecipes,
   lineKey,
   mergeInto,
@@ -20,17 +23,17 @@ const line = (
   recipeName,
 });
 
-describe('itemKey', () => {
+describe('ingredientKey', () => {
   it('treats spelling, case, plurals and preparation as the same item', () => {
-    expect(itemKey('Manchego')).toBe(itemKey('manchego'));
-    expect(itemKey('Melted Butter')).toBe(itemKey('butter'));
-    expect(itemKey('Lemons')).toBe(itemKey('lemon'));
-    expect(itemKey('Spinach (fresh)')).toBe(itemKey('spinach'));
+    expect(ingredientKey('Manchego')).toBe(ingredientKey('manchego'));
+    expect(ingredientKey('Melted Butter')).toBe(ingredientKey('butter'));
+    expect(ingredientKey('Lemons')).toBe(ingredientKey('lemon'));
+    expect(ingredientKey('Spinach (fresh)')).toBe(ingredientKey('spinach'));
   });
 
   it('keeps genuinely different things apart', () => {
-    expect(itemKey('Lemon')).not.toBe(itemKey('Lemon Juice'));
-    expect(itemKey('Lime')).not.toBe(itemKey('Lemon'));
+    expect(ingredientKey('Lemon')).not.toBe(ingredientKey('Lemon Juice'));
+    expect(ingredientKey('Lime')).not.toBe(ingredientKey('Lemon'));
   });
 });
 

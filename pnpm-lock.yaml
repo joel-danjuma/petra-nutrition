@@ -405,6 +405,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@petra/food-measures':
+        specifier: workspace:*
+        version: link:../food-measures
       axios:
         specifier: ^1.5.0
         version: 1.18.1(supports-color@5.5.0)

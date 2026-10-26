@@ -1,3 +1,5 @@
+import { isStaple, subtractQuantity } from '@petra/food-measures';
+
 import { prisma } from '../database';
 import { describeQuantity, findInPantry } from './pantry-match';
 import { combine, dedupeItems, lineKey, mergeInto } from './shopping-merge';
@@ -185,18 +187,43 @@ export class ShoppingListService {
       const skippedItems: Array<{ name: string; have: string; location: string }> = [];
       for (const [, item] of ingredientMap) {
         const stocked = findInPantry(item.name, pantryItems);
-        // Same arithmetic as before this change (quantities compared as plain
-        // numbers, units notwithstanding); only the matching got smarter.
-        const inPantry = stocked?.quantity ?? 0;
-        const needed = item.quantity - inPantry;
-        if (needed > 0) {
-          shoppingItems.push({ ...item, quantity: needed });
-        } else if (stocked) {
+        const skip = () =>
           skippedItems.push({
             name: item.name,
-            have: describeQuantity(stocked),
-            location: stocked.location,
+            have: stocked ? describeQuantity(stocked) : 'A staple',
+            location: stocked?.location ?? '',
           });
+
+        // Nobody is sent out for salt, whatever the pantry recorded.
+        if (isStaple(item.name)) {
+          skip();
+          continue;
+        }
+        if (!stocked) {
+          shoppingItems.push(item);
+          continue;
+        }
+
+        // Subtracted in the units each side is measured in: 1.3 kg of flour
+        // against 500 g in the cupboard is 800 g to buy. Comparing the bare
+        // numbers called that covered. When the two cannot be compared — 400 g
+        // against "2 tins" — the whole amount stays on the list, with what the
+        // cupboard holds alongside so the shopper can judge.
+        const left = subtractQuantity(item, stocked, item.name);
+        if (left === 'incomparable') {
+          const have = `You have ${describeQuantity(stocked)}`;
+          shoppingItems.push({
+            ...item,
+            notes: item.notes ? `${item.notes}; ${have}` : have,
+          });
+        } else if (left.quantity > 0) {
+          shoppingItems.push({
+            ...item,
+            quantity: left.quantity,
+            unit: left.unit,
+          });
+        } else {
+          skip();
         }
       }
 

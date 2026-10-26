@@ -8,64 +8,12 @@
  * Deliberately simple and conservative: a word-set match, not a food
  * ontology. A false "you have it" is worse than a false "buy it" — the first
  * leaves someone mid-recipe without an ingredient.
+ *
+ * The word rules — plurals, synonyms, which words are preparation — are
+ * `@petra/food-measures`', shared with the agent's retrieval and the compose
+ * node's staples, so the recipe screen and the chat cannot disagree either.
  */
-
-/** Words that describe an ingredient rather than name it. */
-const DESCRIPTORS = new Set([
-  'fresh',
-  'large',
-  'small',
-  'medium',
-  'ripe',
-  'chopped',
-  'sliced',
-  'diced',
-  'minced',
-  'grated',
-  'crushed',
-  'whole',
-  'organic',
-  'free',
-  'range',
-  'extra',
-  'virgin',
-  'of',
-  'a',
-  'the',
-  'clove',
-  'cloves',
-  'bunch',
-  'handful',
-  'pinch',
-  'tin',
-  'tins',
-  'can',
-  'cans',
-  'jar',
-  'bag',
-  'pack',
-  'packet',
-  'to',
-  'taste',
-  'and',
-  'or',
-]);
-
-const singular = (w: string) =>
-  w.length > 4 && w.endsWith('oes')
-    ? w.slice(0, -2) // tomatoes → tomato
-    : w.length > 3 && w.endsWith('s') && !w.endsWith('ss')
-      ? w.slice(0, -1)
-      : w;
-
-/** The significant words of a name: lower-cased, singular, descriptors dropped. */
-export const nameWords = (name: string): string[] =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z\s-]/g, ' ')
-    .split(/[\s-]+/)
-    .filter(w => w && !DESCRIPTORS.has(w))
-    .map(singular);
+import { covers, ingredientWords, isStaple } from '@petra/food-measures';
 
 export interface PantryEntry {
   name: string;
@@ -76,9 +24,10 @@ export interface PantryEntry {
 }
 
 /**
- * The pantry entry that covers an ingredient, if any. Matches when every
- * significant word of the pantry item's name appears in the ingredient's:
- * "garlic" covers "garlic cloves", "olive oil" covers "extra virgin olive oil".
+ * The pantry entry that covers an ingredient, if any — `covers`: every
+ * significant word of the pantry item's name appears in the ingredient's.
+ * "garlic" covers "garlic cloves", "olive oil" covers "extra virgin olive oil",
+ * "unsalted butter" covers "butter".
  *
  * Only that direction. The reverse — a more specific pantry item standing in
  * for a general ingredient — is where the wrong answers live: "tinned
@@ -89,15 +38,13 @@ export function findInPantry<T extends PantryEntry>(
   ingredient: string,
   pantry: readonly T[]
 ): T | null {
-  const want = new Set(nameWords(ingredient));
+  const want = new Set(ingredientWords(ingredient));
   if (want.size === 0) return null;
 
   let best: { item: T; extra: number } | null = null;
   for (const item of pantry) {
-    const have = nameWords(item.name);
-    if (have.length === 0) continue;
-    if (!have.every(w => want.has(w))) continue;
-    const extra = want.size - new Set(have).size;
+    if (!covers(item.name, ingredient)) continue;
+    const extra = want.size - new Set(ingredientWords(item.name)).size;
     if (!best || extra < best.extra) best = { item, extra };
   }
   return best?.item ?? null;
@@ -123,7 +70,7 @@ export interface PantryMatch {
     /** What the pantry holds, e.g. "3 tins". Absent when missing. */
     have?: string;
   }>;
-  /** Ingredients with nothing in the pantry to cover them. */
+  /** Ingredients with nothing in the pantry to cover them, staples aside. */
   toBuy: number;
   /** Distinct pantry items due within `USE_SOON_DAYS` that the recipe uses up. */
   clears: number;
@@ -152,6 +99,16 @@ export function matchRecipeToPantry<T extends PantryEntry & { id: string }>(
 
   const rows = ingredients.map(ing => {
     const hit = findInPantry(ing.name, pantry);
+    // A staple nobody recorded is still in the cupboard: salt and olive oil
+    // are "have", not "Buy". One the pantry does record keeps its dates, so
+    // butter about to turn still shows as use-soon.
+    if (!hit && isStaple(ing.name)) {
+      return {
+        ingredientId: ing.id,
+        status: 'have' as const,
+        daysLeft: null,
+      };
+    }
     if (!hit) {
       toBuy += 1;
       return {
