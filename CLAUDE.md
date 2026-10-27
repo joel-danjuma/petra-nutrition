@@ -276,6 +276,14 @@ Next.js 14 App Router with:
   `createPetraClient` (`packages/shared/src/api`) — token, envelope, one
   `ApiError` shape and 401 refresh live there. Mobile passes `expo/fetch`. Do
   not add raw `fetch` calls or read the token by hand in either app.
+- Chat: both apps run a turn through `startChatTurn` from `@petra/shared`
+  (`packages/shared/src/chat/`) — it streams, decodes with the contract's codec,
+  and resolves to a typed `ChatReply`; history maps through
+  `replyFromStoredMessage`. Reply shapes (`GeneratedRecipe`,
+  `NutritionBreakdown`, …) come from `@petra/agent-contract`; never redeclare
+  them in an app. It falls back to `/chat/message` only when the stream request
+  itself is refused — once the API has answered 200 it has stored the user's
+  message, so a broken stream is an error, not a resend.
 - Forms: React Hook Form + Zod validation
 
 ### Database Schema (Prisma)
