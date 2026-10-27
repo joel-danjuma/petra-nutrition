@@ -414,6 +414,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@petra/agent-contract':
+        specifier: workspace:*
+        version: link:../agent-contract
       '@petra/food-measures':
         specifier: workspace:*
         version: link:../food-measures

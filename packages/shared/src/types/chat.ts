@@ -1,6 +1,29 @@
 import { z } from 'zod';
+import {
+  chatResponseTypeSchema,
+  generatedRecipeSchema,
+  nutritionBreakdownSchema,
+  type GeneratedRecipe,
+  type NutritionBreakdown,
+} from '@petra/agent-contract';
 import { MessageRoleSchema } from './enums';
 
+/**
+ * The chat payloads are the agent contract's, not copies of it.
+ *
+ * The apps used to declare their own `GeneratedRecipe` and `Nutrition` — four
+ * hand-written copies of one schema, already disagreeing about which fields
+ * were optional. Re-exported as types only, which keeps this file safe to
+ * import from a React Server Component (see `core.ts`).
+ */
+export type {
+  ChatResponse,
+  ChatResponseType,
+  GeneratedRecipe,
+  GraphNode,
+  NutritionBreakdown,
+  NutritionFacts,
+} from '@petra/agent-contract';
 
 export const MessageContentSchema = z.object({
   type: z.enum(['text', 'image', 'recipe_card', 'meal_plan_card', 'shopping_list_card']),
@@ -10,6 +33,29 @@ export const MessageContentSchema = z.object({
   metadata: z.record(z.any()).optional(), // for structured data like recipe IDs, etc.
 });
 
+/**
+ * What the API stores beside an assistant message: the reply's own fields, so
+ * a reloaded conversation renders exactly what the live one did.
+ *
+ * Mirrors `storedMetadata` in services/api/src/services/chat-turn.ts — nine
+ * fields. The schema this replaces listed model, tokens and processing time,
+ * which no path has ever written. User messages carry no metadata, hence
+ * `nullish` on the message.
+ */
+export const StoredReplyMetadataSchema = z.object({
+  type: chatResponseTypeSchema.optional(),
+  confidence: z.number().optional(),
+  structuredData: z.unknown().optional(),
+  /** A library recipe the reply recommended. */
+  recipeId: z.string().optional(),
+  /** A dish the assistant composed; no row exists behind it until saved. */
+  generatedRecipe: generatedRecipeSchema.optional(),
+  nutrition: nutritionBreakdownSchema.optional(),
+  assumptions: z.array(z.string()).optional(),
+  compromises: z.array(z.string()).optional(),
+  suggestions: z.array(z.string()).optional(),
+});
+
 export const ChatMessageSchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().uuid(),
@@ -17,12 +63,7 @@ export const ChatMessageSchema = z.object({
   content: z.array(MessageContentSchema),
   timestamp: z.date(),
   isStreaming: z.boolean().default(false),
-  metadata: z.object({
-    model: z.string().optional(), // which AI model was used
-    tokens: z.number().optional(),
-    processingTime: z.number().optional(), // in milliseconds
-    confidence: z.number().min(0).max(1).optional(),
-  }).optional(),
+  metadata: StoredReplyMetadataSchema.nullish(),
 });
 
 export const ChatSessionSchema = z.object({
@@ -108,6 +149,50 @@ export type ChatSessionSearch = z.infer<typeof ChatSessionSearchSchema>;
 export type AICapability = z.infer<typeof AICapabilitySchema>;
 export type AIResponseType = z.infer<typeof AIResponseTypeSchema>;
 export type AIResponse = z.infer<typeof AIResponseSchema>;
+
+export type StoredReplyMetadata = z.infer<typeof StoredReplyMetadataSchema>;
+
+/**
+ * A message as the API sends it, from `GET /chat/sessions/:id` or inside a
+ * `/chat/message` reply. Looser than `ChatMessage`: over JSON the timestamp is
+ * a string, and `content` is a block array on new rows but a plain string on
+ * old ones.
+ */
+export interface StoredChatMessage {
+  id?: string;
+  role: string;
+  content: unknown;
+  timestamp?: string | Date;
+  metadata?: unknown;
+}
+
+/**
+ * A library recipe, hydrated by the API so the chat card renders without a
+ * second request. Only the whole-reply endpoint sends one; a streamed reply
+ * carries the `recipeId` alone.
+ */
+export interface ChatRecipeCard {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  totalTime: number | null;
+  servings: number | null;
+  dietaryTags: string[];
+  nutrition: { calories: number; protein: number } | null;
+}
+
+/** `data` of `POST /chat/message`. */
+export interface ChatMessageResponse {
+  /** The stored assistant message, metadata included. */
+  message: StoredChatMessage;
+  content: string;
+  recipe: ChatRecipeCard | null;
+  suggestions?: string[];
+  generatedRecipe?: GeneratedRecipe;
+  nutrition?: NutritionBreakdown;
+  assumptions: string[];
+  compromises: string[];
+}
 
 export interface ChatSessionSearchResponse {
   sessions: ChatSession[];

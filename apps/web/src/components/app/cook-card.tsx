@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChefHat, Check, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type { GeneratedRecipe } from '@petra/shared';
 
 import { Eyebrow, PantryArt } from '@/components/ds';
 import { Button } from '@/components/ui/button';
@@ -172,21 +173,7 @@ export function LibraryCookCard({ recipeId }: { recipeId: string }) {
 
 /* ------------------------------------------------------------ composed dish */
 
-export interface ComposedRecipe {
-  title: string;
-  servings: number;
-  prepTime: number;
-  cookTime: number;
-  difficulty: string;
-  ingredients: {
-    name: string;
-    amount: number;
-    unit: string;
-    staple?: boolean;
-  }[];
-  instructions: { step: number; instruction: string; tip?: string }[];
-}
-
+/** The contract's own type: the card renders exactly what the reply carried. */
 export function ComposedCookCard({
   recipe,
   calories,
@@ -194,7 +181,7 @@ export function ComposedCookCard({
   savedId,
   onSave,
 }: {
-  recipe: ComposedRecipe;
+  recipe: GeneratedRecipe;
   calories?: number;
   estimated?: boolean;
   /** Set once saved, so the card opens the saved copy instead of saving again. */
