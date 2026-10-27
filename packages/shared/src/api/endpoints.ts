@@ -1,3 +1,5 @@
+import type { SaveGeneratedRecipeRequest } from '@petra/agent-contract';
+
 import { ApiClient, type FetchResponseLike } from './client';
 import {
   User, AuthResponse, CreateUser, UpdateUser, Login, PasswordReset, PasswordResetConfirm,
@@ -10,6 +12,7 @@ import {
   ShoppingList, CreateShoppingList, UpdateShoppingList, ShoppingListSearch, ShoppingListSearchResponse,
   GenerateShoppingList, BulkUpsertShoppingListItems,
   ChatSession, CreateChatSession, ChatSessionSearch, ChatSessionSearchResponse,
+  ChatMessageResponse,
   LogWasteEvent, LogMealCompletion, WasteSummary, TodayNutrition,
 } from '../types';
 
@@ -21,19 +24,20 @@ export const GENERATION_TIMEOUT_MS = 90_000;
 
 /** `POST /chat/message` and `/chat/stream`: the text, and where it belongs. */
 export interface ChatMessageRequest {
-  /** Omitted or null, the API answers without a stored conversation. */
-  sessionId?: string | null;
+  /**
+   * Required: a turn belongs to a stored conversation, and the API answers an
+   * unknown session with a 404. `startChatTurn` creates one when there is none.
+   */
+  sessionId: string;
   message: string;
 }
 
 /**
- * Keep a dish the assistant composed. Opaque here: the API validates it
- * against the agent contract, and the client only sends back what it was given.
+ * Keep a dish the assistant composed. The contract's own types: the client
+ * sends back exactly what the chat reply gave it, and the API validates it
+ * against the same schema.
  */
-export interface SaveGeneratedRecipe {
-  recipe: unknown;
-  nutrition?: unknown;
-}
+export type SaveGeneratedRecipe = SaveGeneratedRecipeRequest;
 
 /**
  * Every endpoint the apps call, typed. Each resolves to the response's `data`
@@ -272,17 +276,18 @@ export class PetraApiEndpoints {
     deleteSession: (id: string): Promise<void> =>
       this.client.delete(`/chat/sessions/${id}`),
 
-    /** One reply, whole. The caller types it; Phase 6 will do so centrally. */
-    sendMessage: <T = Record<string, unknown>>(
-      data: ChatMessageRequest
-    ): Promise<T> =>
+    /**
+     * One reply, whole. Screens use `startChatTurn` (src/chat), which streams
+     * and falls back to this only when the stream never started.
+     */
+    sendMessage: (data: ChatMessageRequest): Promise<ChatMessageResponse> =>
       this.client.post('/chat/message', data, {
         timeoutMs: GENERATION_TIMEOUT_MS,
       }),
 
     /**
-     * The SSE response, unread. Decoding the frames is the caller's job; the
-     * client only guarantees the request was authenticated and accepted.
+     * The SSE response, unread. Decoding the frames is `startChatTurn`'s job;
+     * the client only guarantees the request was authenticated and accepted.
      */
     stream: (
       data: ChatMessageRequest,

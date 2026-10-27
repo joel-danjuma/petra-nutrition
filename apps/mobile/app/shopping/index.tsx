@@ -3,7 +3,7 @@ import { View, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronLeft, ShoppingCart } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { errorMessage, usePantry } from '@petra/shared';
+import { covers, errorMessage, isStaple, usePantry } from '@petra/shared';
 
 import { loadActiveList, setItemCompleted, type ShoppingListData } from '../../src/api/shopping';
 import { color, radius, space } from '../../src/theme';
@@ -95,19 +95,19 @@ export default function ShoppingListScreen() {
     }
   };
 
-  const pantryNames = useMemo(
-    () => pantryItems.map(p => p.name.toLowerCase().trim()),
-    [pantryItems]
-  );
-
+  /**
+   * List items the kitchen already has, by the shared `covers` rule — the one
+   * the API's pantry match uses — rather than the two-way substring test this
+   * replaces, under which a pantry "oil" covered "boil-in-the-bag rice" and an
+   * empty pantry name covered everything. Staples count as had.
+   */
   const alreadyHaveCount = useMemo(() => {
     if (!list) return 0;
-    return list.items.filter(item =>
-      pantryNames.some(
-        n => n.includes(item.name.toLowerCase()) || item.name.toLowerCase().includes(n)
-      )
+    return list.items.filter(
+      item =>
+        isStaple(item.name) || pantryItems.some(p => covers(p.name, item.name))
     ).length;
-  }, [list, pantryNames]);
+  }, [list, pantryItems]);
 
   const sections = useMemo(() => {
     if (!list) return [];

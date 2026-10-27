@@ -12,7 +12,12 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
     NEXT_PUBLIC_WEB_URL: process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3000',
   },
-  transpilePackages: ['@petra/shared', '@petra/food-measures'],
+  transpilePackages: [
+    '@petra/shared',
+    '@petra/food-measures',
+    // The chat payload types and the SSE frame decoder.
+    '@petra/agent-contract',
+  ],
   async redirects() {
     return [
       // The redesign renamed Features to Platform. Permanent, so search

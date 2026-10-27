@@ -15,13 +15,16 @@ const config = getDefaultConfig(projectRoot);
 // Watch only what the mobile app actually needs from the monorepo: its own
 // package (implicit default), the shared workspace package it imports as
 // @petra/shared, @petra/food-measures (which @petra/shared re-exports the
-// ingredient rules from), plus the hoisted root node_modules. NOT the whole repo —
+// ingredient rules from), @petra/agent-contract (the chat payload types and
+// the SSE frame decoder the chat screen streams through), plus the hoisted
+// root node_modules. NOT the whole repo —
 // services/, apps/web, .git, docker/, docs/ etc. are irrelevant
 // to this app and watching them needlessly multiplies the crawl on a
 // non-native-filesystem volume (see the AppleDouble note below).
 config.watchFolders = [
   path.resolve(workspaceRoot, 'packages/shared'),
   path.resolve(workspaceRoot, 'packages/food-measures'),
+  path.resolve(workspaceRoot, 'packages/agent-contract'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 

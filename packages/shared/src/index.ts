@@ -7,6 +7,9 @@ export * from './types';
 // API Client
 export * from './api';
 
+// Chat turns: streaming, fallback, and one reply shape
+export * from './chat';
+
 // State Management
 export * from './store';
 
