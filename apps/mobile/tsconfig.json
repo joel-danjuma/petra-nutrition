@@ -1,17 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  // Expo's base, not the repo root's: SDK 57 sets moduleResolution "bundler"
+  // together with customConditions ["react-native"], and TypeScript rejects
+  // that pair being split up. The root config targets the Node services and
+  // pins moduleResolution to "node", so inheriting from it here produced
+  // TS5098 on every build.
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "allowJs": true,
-    "jsx": "react-native",
     "strict": true,
-    "esModuleInterop": true,
+    "allowJs": true,
     "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
     "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     // Not composite: nothing consumes this package's build output, and marking
     // it so forces every file reached through the @petra/shared path alias to

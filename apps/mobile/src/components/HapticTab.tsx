@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable } from 'react-native';
-import type { BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
+// Expo Router 57 vendored react-navigation's bottom tabs and dropped the
+// @react-navigation/* packages, so the props type now comes from the router.
+import type { BottomTabBarButtonProps } from 'expo-router/tabs';
 import * as Haptics from 'expo-haptics';
 
 /**

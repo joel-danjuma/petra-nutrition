@@ -8,6 +8,10 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE EXTENSION IF NOT EXISTS "btree_gin";
+-- Recipe embeddings are a vector(384) column with an HNSW index. The API
+-- migration creates this too; having it here means a fresh dev database is
+-- ready before the first migration runs. Requires the pgvector/pgvector image.
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- Set up basic configuration
 ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';

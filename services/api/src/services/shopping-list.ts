@@ -1,4 +1,5 @@
 import { prisma } from '../database';
+import { ValidationError } from '../middleware/error';
 import { logger } from '../utils/logger';
 
 /** Canonicalise a shopping-list item's enum fields before they reach Prisma. */
@@ -203,12 +204,30 @@ export class ShoppingListService {
     }
   }
 
+  /**
+   * Upsert items on a list: an element carrying an `id` updates that item, one
+   * without creates a new item. Items the body omits are left alone, so a
+   * partial array adds rather than replaces.
+   */
   async updateItems(id: string, userId: string, items: any[]) {
     try {
-      const existing = await prisma.shoppingList.findFirst({ where: { id, userId } });
+      const existing = await prisma.shoppingList.findFirst({
+        where: { id, userId },
+        include: { items: { select: { id: true } } },
+      });
       if (!existing) return null;
 
-      // Upsert each item
+      // Ownership was checked for the list but never for the items, so an id
+      // from somebody else's list would have been updated quite happily — and
+      // since a client posts the whole row back, moved onto this one too.
+      const own = new Set(existing.items.map(item => item.id));
+      const foreign = items.filter(item => item.id && !own.has(item.id));
+      if (foreign.length) {
+        throw new ValidationError(
+          `${foreign.length === 1 ? 'An item does' : 'Some items do'} not belong to this list`
+        );
+      }
+
       await Promise.all(
         items.map(item =>
           item.id

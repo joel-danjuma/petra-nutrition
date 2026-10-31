@@ -1,6 +1,16 @@
-import { prisma } from '../db';
 import { logger } from '../utils/logger';
-import { MODEL_ID, cosine, embed } from './embedding';
+import { embed } from './embedding';
+import {
+  blockedPattern,
+  hydrate,
+  lexicalCandidates,
+  pantryCandidates,
+  semanticCandidates,
+  verifySearchCapability,
+  type Candidate,
+  type HydratedRecipe,
+} from './sql';
+import { expandAllergen, expandDiet, normalise } from './terms';
 
 /**
  * Hybrid recipe retrieval.
@@ -22,7 +32,19 @@ import { MODEL_ID, cosine, embed } from './embedding';
  * the three scores to be on comparable scales.
  *
  * Allergens are a hard filter, not a ranking penalty — the profile treats a
- * severe allergy as "block these recipes outright".
+ * severe allergy as "block these recipes outright". The filter is applied
+ * inside each candidate query rather than to their results, so a blocked
+ * recipe cannot consume a candidate slot and push a safe one out.
+ *
+ * **Candidate generation moved into the database.** The previous version loaded
+ * every public recipe into process memory with token sets and 384-dimension
+ * vectors, then scored all of them in JavaScript per query. That is correct at
+ * a few hundred recipes and untenable at a million — multiple gigabytes
+ * resident per replica and a full scan per chat turn — which is why a bulk
+ * import could not land before this changed. Each signal is now a bounded,
+ * indexed SQL query; fusion stays here, over three short lists.
+ *
+ * `search()` keeps its signature, so nothing upstream knows this happened.
  */
 
 export interface RetrievalOptions {
@@ -34,6 +56,13 @@ export interface RetrievalOptions {
   /** Soft preference; recipes carrying these tags are boosted. */
   dietaryRestrictions?: string[];
   limit?: number;
+  /**
+   * Also search this caller's own recipes, not just the public corpus.
+   *
+   * A saved generation is written private, so without this it is embedded and
+   * then permanently unfindable.
+   */
+  ownerId?: string;
 }
 
 export interface RetrievedRecipe {
@@ -52,360 +81,196 @@ export interface RetrievedRecipe {
   reasons: string[];
 }
 
-interface IndexedRecipe {
-  id: string;
-  title: string;
-  imageUrl: string | null;
-  cuisine: string | null;
-  totalTime: number;
-  servings: number;
-  dietaryTags: string[];
-  ingredients: string[];
-  ingredientTokens: Set<string>;
-  vector: number[] | null;
-}
-
 /** RRF constant. 60 is the value from the original paper and behaves well. */
 const RRF_K = 60;
 const WEIGHTS = { pantry: 1.0, lexical: 0.8, semantic: 0.6 };
-const INDEX_TTL_MS = 5 * 60 * 1000;
-
-/** Strip plurals and packaging words so "Chicken Thighs" matches "chicken thigh". */
-function normalise(name: string): string[] {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2)
-    .map(w => (w.endsWith('es') ? w.slice(0, -2) : w.endsWith('s') ? w.slice(0, -1) : w))
-    .filter(w => !STOP.has(w));
-}
-
-const STOP = new Set([
-  'the', 'and', 'for', 'with', 'into', 'fresh', 'chopped', 'sliced', 'diced',
-  'large', 'small', 'medium', 'finely', 'roughly', 'free', 'range', 'plain',
-]);
-
-/**
- * Allergens are named as categories ("shellfish") but appear in ingredient
- * lists as specific items ("Frozen Seafood mix", "King Prawns"), so matching
- * the literal word misses the dish entirely. Each declared allergy expands to
- * the terms that actually show up in recipes.
- *
- * This is a filter that errs toward over-blocking, which is the right direction
- * for an allergy. It is NOT a safety guarantee: ingredient names are free text,
- * upstream data is inconsistent, and cross-contamination isn't modelled at all.
- * The UI says as much next to the severe-allergy callout.
- */
-const ALLERGEN_TERMS: Record<string, string[]> = {
-  shellfish: [
-    'shellfish', 'seafood', 'prawn', 'shrimp', 'crab', 'lobster', 'crayfish',
-    'langoustine', 'scampi', 'mussel', 'clam', 'oyster', 'scallop', 'squid',
-    'calamari', 'octopus', 'cockle', 'whelk', 'crustacean', 'mollusc', 'surimi',
-  ],
-  fish: [
-    'fish', 'anchovy', 'anchovie', 'salmon', 'tuna', 'cod', 'haddock', 'mackerel',
-    'sardine', 'trout', 'bass', 'halibut', 'monkfish', 'pollock', 'tilapia',
-    'kipper', 'worcestershire',
-  ],
-  nut: [
-    'nut', 'almond', 'walnut', 'pecan', 'cashew', 'pistachio', 'hazelnut',
-    'macadamia', 'praline', 'marzipan', 'nutella', 'frangipane', 'amaretto',
-  ],
-  peanut: ['peanut', 'groundnut', 'satay'],
-  dairy: [
-    'milk', 'butter', 'cheese', 'cream', 'yoghurt', 'yogurt', 'ghee', 'parmesan',
-    'mozzarella', 'cheddar', 'mascarpone', 'ricotta', 'creme', 'custard',
-    'buttermilk', 'paneer', 'feta', 'halloumi',
-  ],
-  gluten: [
-    'flour', 'bread', 'breadcrumb', 'pasta', 'wheat', 'barley', 'rye', 'couscous',
-    'noodle', 'spaghetti', 'macaroni', 'pastry', 'filo', 'panko', 'semolina',
-    'bulgur', 'seitan', 'cracker', 'biscuit',
-  ],
-  egg: ['egg', 'mayonnaise', 'meringue', 'aioli'],
-  soy: ['soy', 'soya', 'tofu', 'edamame', 'miso', 'tempeh'],
-  sesame: ['sesame', 'tahini', 'halva'],
-  pork: [
-    'pork', 'bacon', 'ham', 'chorizo', 'pancetta', 'prosciutto', 'lardon',
-    'gammon', 'salami', 'pepperoni', 'lard',
-  ],
-};
-
-/**
- * Meat and poultry terms, kept separate from ALLERGEN_TERMS because diets
- * exclude them while allergies generally do not.
- */
-const MEAT_TERMS = [
-  'beef', 'steak', 'mince', 'brisket', 'veal', 'lamb', 'mutton', 'venison',
-  'goat', 'oxtail', 'liver', 'kidney', 'tripe', 'suet', 'gelatin', 'gelatine',
-  'meatball', 'burger', 'sausage', 'bolognese', 'stock cube', 'beef stock',
-];
-
-const POULTRY_TERMS = [
-  'chicken', 'turkey', 'duck', 'goose', 'poussin', 'quail', 'pheasant',
-  'chicken stock', 'schnitzel',
-];
-
-/**
- * What each diet *excludes*.
- *
- * The dietary tag on a recipe is only a nudge in scoring, because the tag
- * vocabulary upstream is inconsistent and an absent tag proves nothing. The
- * reverse is not true: a recipe whose ingredients say "chicken thighs" is
- * definitively not pescatarian. So diets get a hard exclusion filter built
- * from ingredients, exactly like allergens — otherwise a pescatarian user's
- * shortlist comes back entirely chicken and the model refuses every turn.
- */
-const DIET_EXCLUSIONS: Record<string, string[]> = {
-  pescatarian: [...MEAT_TERMS, ...POULTRY_TERMS, ...ALLERGEN_TERMS.pork],
-  vegetarian: [
-    ...MEAT_TERMS, ...POULTRY_TERMS, ...ALLERGEN_TERMS.pork,
-    ...ALLERGEN_TERMS.fish, ...ALLERGEN_TERMS.shellfish,
-  ],
-  vegan: [
-    ...MEAT_TERMS, ...POULTRY_TERMS, ...ALLERGEN_TERMS.pork,
-    ...ALLERGEN_TERMS.fish, ...ALLERGEN_TERMS.shellfish,
-    ...ALLERGEN_TERMS.dairy, ...ALLERGEN_TERMS.egg, 'honey',
-  ],
-  'dairy-free': ALLERGEN_TERMS.dairy,
-  'gluten-free': ALLERGEN_TERMS.gluten,
-  halal: ALLERGEN_TERMS.pork,
-  kosher: ALLERGEN_TERMS.pork,
-};
-
-/** Map a user's free-text diet onto the terms a matching recipe must not contain. */
-function expandDiet(raw: string): string[] {
-  const key = raw.toLowerCase().trim().replace(/\s+/g, '-');
-  for (const [diet, list] of Object.entries(DIET_EXCLUSIONS)) {
-    if (key.includes(diet) || key.includes(diet.replace('-', ''))) return list;
-  }
-  // An unrecognised restriction excludes nothing — better to show the user
-  // recipes and let the model reason about them than to return an empty list.
-  return [];
-}
-
-/** Map a user's free-text allergy onto the terms that appear in recipes. */
-function expandAllergen(raw: string): string[] {
-  const key = raw.toLowerCase().trim();
-  const terms = new Set<string>(normalise(raw));
-
-  for (const [category, list] of Object.entries(ALLERGEN_TERMS)) {
-    // "No shellfish", "Shellfish allergy", "shellfish" all reach the same list.
-    if (key.includes(category) || list.some(t => key.includes(t))) {
-      for (const t of list) terms.add(t);
-    }
-  }
-  // "Nut allergy" should also pull in peanut, which people expect.
-  if (key.includes('nut')) for (const t of ALLERGEN_TERMS.peanut) terms.add(t);
-  if (key.includes('dairy') || key.includes('lactose')) {
-    for (const t of ALLERGEN_TERMS.dairy) terms.add(t);
-  }
-  if (key.includes('gluten') || key.includes('celiac') || key.includes('coeliac')) {
-    for (const t of ALLERGEN_TERMS.gluten) terms.add(t);
-  }
-  return [...terms];
-}
 
 export class RetrievalService {
-  private index: IndexedRecipe[] | null = null;
-  private indexedAt = 0;
+  /**
+   * Whether the database can actually serve a semantic query.
+   *
+   * Probed once and cached, rather than checked per query: a missing pgvector
+   * extension is a deploy-shaped problem, not a per-request one, and running
+   * `pg_extension` lookups on every chat turn to rediscover it would be
+   * absurd. Null means "not yet probed".
+   */
+  private capability: Awaited<ReturnType<typeof verifySearchCapability>> | null = null;
 
-  /** Drop the cache — call after an import or a new recipe is persisted. */
+  /**
+   * Kept for `POST /v1/index/rebuild` and the embed script.
+   *
+   * There is no longer an in-process index to drop — candidate generation
+   * reads the database on every query, so a newly imported recipe is visible
+   * immediately. What this does clear is the capability probe, so a deploy
+   * that has just run the pgvector migration starts using semantic retrieval
+   * without a restart.
+   */
   invalidate() {
-    this.index = null;
+    this.capability = null;
   }
 
-  private async getIndex(): Promise<IndexedRecipe[]> {
-    if (this.index && Date.now() - this.indexedAt < INDEX_TTL_MS) return this.index;
-
-    const rows = await prisma.recipe.findMany({
-      where: { isPublic: true },
-      select: {
-        id: true,
-        title: true,
-        imageUrl: true,
-        cuisine: true,
-        totalTime: true,
-        servings: true,
-        dietaryTags: true,
-        ingredients: { select: { name: true }, orderBy: { order: 'asc' } },
-        embedding: { select: { vector: true, model: true } },
-      },
-    });
-
-    this.index = rows.map(r => {
-      const ingredients = r.ingredients.map(i => i.name);
-      const tokens = new Set<string>();
-      for (const name of ingredients) for (const t of normalise(name)) tokens.add(t);
-      return {
-        id: r.id,
-        title: r.title,
-        imageUrl: r.imageUrl,
-        cuisine: r.cuisine,
-        totalTime: r.totalTime,
-        servings: r.servings,
-        dietaryTags: r.dietaryTags,
-        ingredients,
-        ingredientTokens: tokens,
-        // Guard against stale vectors from a previous model.
-        vector: r.embedding?.model === MODEL_ID ? r.embedding.vector : null,
-      };
-    });
-    this.indexedAt = Date.now();
-
-    const withVectors = this.index.filter(r => r.vector).length;
-    logger.info(`Retrieval index built: ${this.index.length} recipes, ${withVectors} embedded`);
-    return this.index;
+  private async searchCapability() {
+    if (!this.capability) this.capability = await verifySearchCapability();
+    return this.capability;
   }
 
   async search(opts: RetrievalOptions): Promise<RetrievedRecipe[]> {
-    const { query, pantry = [], allergies = [], dietaryRestrictions = [], limit = 6 } = opts;
-    const index = await this.getIndex();
+    const {
+      query,
+      pantry = [],
+      allergies = [],
+      dietaryRestrictions = [],
+      limit = 6,
+      ownerId,
+    } = opts;
 
-    // Hard allergen filter first, so nothing downstream can rank a blocked
-    // recipe back into the results. Matches on the recipe title too — "Seafood
-    // rice" declares itself in the name even when the ingredient list only says
-    // "Frozen Seafood mix".
-    const blockedTokens = new Set([
+    const blockedTerms = [
       ...allergies.flatMap(expandAllergen),
       ...dietaryRestrictions.flatMap(expandDiet),
-    ]);
-    let safe = blockedTokens.size
-      ? index.filter(r => {
-          for (const t of r.ingredientTokens) if (blockedTokens.has(t)) return false;
-          for (const t of normalise(r.title)) if (blockedTokens.has(t)) return false;
-          return true;
-        })
-      : index;
+    ];
+    let blocked = blockedPattern(blockedTerms);
 
-    if (blockedTokens.size) {
-      logger.info(
-        `Diet/allergen filter removed ${index.length - safe.length} of ${index.length} recipes`
-      );
-    }
+    let fused = await this.candidates(query, pantry, blocked, ownerId);
 
     // If the restrictions eliminate everything, fall back to allergens alone.
     // An allergy is a safety constraint and is never relaxed; a diet is a
     // preference, and showing nothing at all is worse than showing the user
     // something they can decline.
-    if (!safe.length && dietaryRestrictions.length) {
-      const allergenOnly = new Set(allergies.flatMap(expandAllergen));
-      safe = allergenOnly.size
-        ? index.filter(r => {
-            for (const t of r.ingredientTokens) if (allergenOnly.has(t)) return false;
-            for (const t of normalise(r.title)) if (allergenOnly.has(t)) return false;
-            return true;
-          })
-        : index;
-      logger.warn('Dietary filter emptied the index; falling back to allergen-only filtering');
+    if (!fused.length && dietaryRestrictions.length) {
+      blocked = blockedPattern(allergies.flatMap(expandAllergen));
+      fused = await this.candidates(query, pantry, blocked, ownerId);
+      if (fused.length) {
+        logger.warn(
+          'Dietary filter returned nothing; falling back to allergen-only filtering'
+        );
+      }
     }
 
+    if (!fused.length) return [];
+
+    const hydrated = await hydrate(fused.slice(0, limit * 3).map(f => f.id));
     const pantryTokens = new Set(pantry.flatMap(normalise));
 
-    /* --- signal 1: pantry coverage ------------------------------------- */
-    const coverage = new Map<string, number>();
-    for (const r of safe) {
-      if (!r.ingredientTokens.size || !pantryTokens.size) {
-        coverage.set(r.id, 0);
-        continue;
-      }
-      let hits = 0;
-      for (const t of r.ingredientTokens) if (pantryTokens.has(t)) hits++;
-      coverage.set(r.id, hits / r.ingredientTokens.size);
+    const results: RetrievedRecipe[] = [];
+    for (const { id, score, reasons } of fused) {
+      const recipe = hydrated.get(id);
+      if (!recipe) continue;
+      results.push(this.shape(recipe, score, reasons, pantryTokens, dietaryRestrictions));
+      if (results.length >= limit) break;
     }
-    const pantryRank = rank(safe, r => coverage.get(r.id) ?? 0);
 
-    /* --- signal 2: lexical --------------------------------------------- */
-    const qTokens = query ? normalise(query) : [];
-    const lexicalScore = (r: IndexedRecipe) => {
-      if (!qTokens.length) return 0;
-      const title = r.title.toLowerCase();
-      let s = 0;
-      for (const t of qTokens) {
-        if (title.includes(t)) s += 2;
-        if (r.ingredientTokens.has(t)) s += 1;
-        if (r.cuisine && r.cuisine.toLowerCase().includes(t)) s += 0.5;
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Run the three signals and fuse them.
+   *
+   * The queries go out together: they are independent, they hit different
+   * indexes, and running them in series would make a chat turn wait for the
+   * sum of three latencies instead of the maximum of them.
+   *
+   * A signal that fails is dropped rather than failing the search. Semantic is
+   * the one that actually does fail in practice — the embedding model may not
+   * have loaded, or pgvector may not be installed — and retrieval without it is
+   * still useful, which is the posture the whole file takes.
+   */
+  private async candidates(
+    query: string | undefined,
+    pantry: string[],
+    blocked: string | null,
+    ownerId?: string
+  ): Promise<{ id: string; score: number; reasons: string[] }[]> {
+    const capability = await this.searchCapability();
+
+    const [pantryHits, lexicalHits, semanticHits] = await Promise.all([
+      pantry.length
+        ? pantryCandidates(pantry.flatMap(normalise), blocked, ownerId).catch(error => {
+            logger.warn('Pantry-overlap retrieval failed', error);
+            return [] as Candidate[];
+          })
+        : Promise.resolve([] as Candidate[]),
+
+      query && capability.pgTrgm
+        ? lexicalCandidates(query, blocked, ownerId).catch(error => {
+            logger.warn('Lexical retrieval failed', error);
+            return [] as Candidate[];
+          })
+        : Promise.resolve([] as Candidate[]),
+
+      query && capability.pgvector && capability.embedded > 0
+        ? embed(query)
+            .then(vector => semanticCandidates(vector, blocked, ownerId))
+            .catch(error => {
+              // Degrades to lexical + pantry rather than failing the chat.
+              logger.warn('Semantic retrieval unavailable, falling back', error);
+              return [] as Candidate[];
+            })
+        : Promise.resolve([] as Candidate[]),
+    ]);
+
+    const scores = new Map<string, { score: number; reasons: string[] }>();
+
+    const fuse = (hits: Candidate[], weight: number, reason: string) => {
+      for (const { id, rank } of hits) {
+        const entry = scores.get(id) ?? { score: 0, reasons: [] };
+        entry.score += weight / (RRF_K + rank);
+        entry.reasons.push(reason);
+        scores.set(id, entry);
       }
-      return s / (qTokens.length * 3);
     };
-    const lexicalRank = rank(safe, lexicalScore);
 
-    /* --- signal 3: semantic -------------------------------------------- */
-    let semanticRank = new Map<string, number>();
-    if (query) {
-      try {
-        const qVec = await embed(query);
-        semanticRank = rank(safe, r => (r.vector ? cosine(qVec, r.vector) : 0));
-      } catch (err) {
-        // Retrieval degrades to lexical + pantry rather than failing the chat.
-        logger.warn('Semantic retrieval unavailable, falling back', err);
-      }
-    }
+    fuse(pantryHits, WEIGHTS.pantry, 'pantry');
+    fuse(lexicalHits, WEIGHTS.lexical, 'lexical');
+    fuse(semanticHits, WEIGHTS.semantic, 'semantic');
 
-    /* --- fuse ----------------------------------------------------------- */
-    const fused = safe.map(r => {
-      const reasons: string[] = [];
-      let score = 0;
-
-      const p = pantryRank.get(r.id);
-      if (p !== undefined && (coverage.get(r.id) ?? 0) > 0) {
-        score += WEIGHTS.pantry / (RRF_K + p);
-        reasons.push('pantry');
-      }
-      const l = lexicalRank.get(r.id);
-      if (l !== undefined && lexicalScore(r) > 0) {
-        score += WEIGHTS.lexical / (RRF_K + l);
-        reasons.push('lexical');
-      }
-      const s = semanticRank.get(r.id);
-      if (s !== undefined && s < 50) {
-        score += WEIGHTS.semantic / (RRF_K + s);
-        reasons.push('semantic');
-      }
-
-      // Dietary tags are a nudge, not a filter — the tag vocabulary upstream is
-      // inconsistent, so absence is not proof a recipe is unsuitable.
-      if (dietaryRestrictions.some(d => r.dietaryTags.some(t => t.toLowerCase() === d.toLowerCase()))) {
-        score *= 1.15;
-        reasons.push('diet');
-      }
-
-      const matched = r.ingredients.filter(n => normalise(n).some(t => pantryTokens.has(t)));
-      const missing = r.ingredients.filter(n => !normalise(n).some(t => pantryTokens.has(t)));
-
-      return {
-        id: r.id,
-        title: r.title,
-        imageUrl: r.imageUrl,
-        cuisine: r.cuisine,
-        totalTime: r.totalTime,
-        servings: r.servings,
-        dietaryTags: r.dietaryTags,
-        matched,
-        missing,
-        coverage: coverage.get(r.id) ?? 0,
-        score,
-        reasons,
-      };
+    logger.info('Retrieval candidates', {
+      pantry: pantryHits.length,
+      lexical: lexicalHits.length,
+      semantic: semanticHits.length,
+      fused: scores.size,
     });
 
-    return fused
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+    return [...scores.entries()]
+      .map(([id, entry]) => ({ id, ...entry }))
+      .sort((a, b) => b.score - a.score);
   }
-}
 
-/** Rank descending by `scoreOf`; returns recipeId -> 0-based rank. */
-function rank(items: IndexedRecipe[], scoreOf: (r: IndexedRecipe) => number): Map<string, number> {
-  const scored = items
-    .map(r => ({ id: r.id, s: scoreOf(r) }))
-    .filter(x => x.s > 0)
-    .sort((a, b) => b.s - a.s);
-  const out = new Map<string, number>();
-  scored.forEach((x, i) => out.set(x.id, i));
-  return out;
+  /** Turn a hydrated row plus its fused score into the shape callers expect. */
+  private shape(
+    recipe: HydratedRecipe,
+    score: number,
+    reasons: string[],
+    pantryTokens: Set<string>,
+    dietaryRestrictions: string[]
+  ): RetrievedRecipe {
+    const matched = recipe.ingredients.filter(n =>
+      normalise(n).some(t => pantryTokens.has(t))
+    );
+    const missing = recipe.ingredients.filter(
+      n => !normalise(n).some(t => pantryTokens.has(t))
+    );
+
+    // Dietary tags are a nudge, not a filter — the tag vocabulary upstream is
+    // inconsistent, so absence is not proof a recipe is unsuitable.
+    const tagged = dietaryRestrictions.some(d =>
+      recipe.dietaryTags.some(t => t.toLowerCase() === d.toLowerCase())
+    );
+
+    return {
+      id: recipe.id,
+      title: recipe.title,
+      imageUrl: recipe.imageUrl,
+      cuisine: recipe.cuisine,
+      totalTime: recipe.totalTime,
+      servings: recipe.servings,
+      dietaryTags: recipe.dietaryTags,
+      matched,
+      missing,
+      coverage: recipe.ingredients.length ? matched.length / recipe.ingredients.length : 0,
+      score: tagged ? score * 1.15 : score,
+      reasons: tagged ? [...reasons, 'diet'] : reasons,
+    };
+  }
 }
 
 export const retrievalService = new RetrievalService();

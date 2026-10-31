@@ -31,7 +31,15 @@ config.resolver.nodeModulesPaths = [
 
 // pnpm's node_modules are symlinks into its content-addressable store.
 config.resolver.unstable_enableSymlinks = true;
-config.resolver.disableHierarchicalLookup = true;
+
+// Hierarchical lookup must stay ON for pnpm. Under npm/yarn every dependency
+// is hoisted to a root node_modules, so pinning the resolver to nodeModulesPaths
+// is a speed-up; under pnpm a package's own dependencies live in the sibling
+// directory inside .pnpm, which is only reachable by walking up from the
+// importing file. Disabling it made Metro fall back to whatever happened to be
+// hoisted at the root, which is how reanimated 4 ended up resolving the root's
+// semver 6 and failing on "semver/functions/satisfies", a semver 7 subpath.
+config.resolver.disableHierarchicalLookup = false;
 
 // This repo lives on a non-native-filesystem volume (/Volumes/...), which
 // makes macOS scatter AppleDouble sidecar files (._foo.tsx, .__layout.tsx)

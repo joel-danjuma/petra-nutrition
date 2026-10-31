@@ -52,6 +52,19 @@ router.post('/',
   asyncHandler(recipeController.create.bind(recipeController))
 );
 
+/**
+ * Save a recipe the assistant composed.
+ *
+ * Separate from `POST /` because the payload is a different shape — it is the
+ * `generatedRecipe` block from a chat response, echoed back — and because it is
+ * validated against the shared contract schema rather than the field-by-field
+ * validators a hand-written recipe goes through. Routing both through one
+ * endpoint would mean one of the two shapes being loosely checked.
+ */
+router.post('/generated',
+  asyncHandler(recipeController.saveGenerated.bind(recipeController))
+);
+
 // Update recipe
 router.patch('/:id',
   validate([validators.uuid('id')]),

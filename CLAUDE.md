@@ -114,14 +114,18 @@ clients: mobile and web talk to `:3001/api` exactly as before.
 
 | | API (`services/api`) | Agent (`services/agent`) |
 |---|---|---|
-| Owns | Auth, all persistence, every Prisma migration | Prompts, model choice, retrieval, the embedding index |
-| Holds | JWT secrets, SMTP, Stripe | `GROQ_API_KEY`, `GEMINI_API_KEY` |
+| Owns | Auth, all persistence, every Prisma migration | Prompts, model choice, retrieval, the embedding index, graph state |
+| Holds | JWT secrets, SMTP, Stripe | `GROQ_API_KEY`, `GEMINI_API_KEY`, `FDC_API_KEY` |
 | Database | Everything | Reads recipes; owns `recipe_embeddings` only |
 | Reachable from | The internet, via nginx | The API only, on the private network |
 
 The agent is **stateless with respect to user data**. Everything it knows about
 the caller arrives in the request body; it cannot express a query against users,
 pantry or chat because those models do not exist in its schema.
+
+Graph state in Redis does not change that. It is TTL'd working memory for a
+conversation in progress, keyed by the API's session id, holding nothing the
+request did not already carry. The API still owns the durable transcript.
 
 The dividing line came from `ChatController.buildUserContext`, which used to do
 two unrelated jobs — load the user's profile and pantry, and run recipe
@@ -137,6 +141,11 @@ Endpoints (all under `/v1`, all requiring `X-Internal-Key`):
 `chat`, `chat/stream`, `recipes/retrieve`, `recipes/generate`, `recipes/enrich`,
 `meal-plans/generate`, `cooking-tips`, `nutrition/analyze`,
 `vision/pantry-items`, `index/rebuild`. `/health` is unauthenticated.
+
+`chatResponseSchema` carries optional `generatedRecipe`, `nutrition`,
+`assumptions` and `compromises`; the SSE envelope adds `node` progress frames
+and an `interrupt` frame. All additive and optional, so a client that ignores
+them sees the behaviour it saw before.
 
 ### The agent's Prisma schema is generated
 
@@ -160,17 +169,77 @@ Express + TypeScript, layered:
 
 ### Agent (`services/agent`)
 
-- `src/orchestrator.ts` — One chat turn, start to finish. A pure function from
-  request to reply, which is what makes it testable without a database.
-- `src/llm/groq.ts` — Groq client, prompt, markdown stripping, streaming
-- `src/llm/enrich.ts` — Structured recipe extraction and its plausibility checks
+- `src/orchestrator.ts` — One chat turn, start to finish. Still a pure function
+  from request to reply — that is what makes it testable without a database —
+  but the turn is now a LangGraph invocation rather than a single model call.
+  `runChatTurn` / `runChatTurnStreaming` keep their original signatures, so the
+  API and both clients are unaffected by the graph.
+- `src/graph/` — The orchestration. See "The chat graph" below.
+- `src/llm/provider.ts` — **The provider seam.** `modelFor(node)` resolves a
+  per-node config block to a chat model. Nodes name a role, not a model, and
+  never import a provider SDK. Groq is the only adapter registered; an
+  OpenRouter adapter and an eval harness slot in behind the same interface.
+- `src/llm/chat-prompt.ts` — The system prompt and the reply parser, shared by
+  the graph's respond node and the single-shot endpoints.
+- `src/llm/groq.ts` — The legacy `groq-sdk` client, still serving
+  `/v1/cooking-tips`, `/v1/nutrition/analyze`, `/v1/meal-plans/generate` and
+  `/v1/recipes/generate` — single model calls that gain nothing from a graph.
+- `src/llm/enrich.ts` — Structured recipe extraction and its plausibility
+  checks. Its nutrition now routes through `src/nutrition` so the recipe
+  screen's macros and the chat's cannot disagree about the same dish.
+- `src/nutrition/` — Quantity resolution, nutrition-database lookup (USDA
+  FoodData Central, Open Food Facts for branded), and summation in TypeScript.
+  The model never does the arithmetic.
 - `src/retrieval/` — Hybrid retrieval (RRF over pantry overlap, lexical,
-  semantic) and the local MiniLM embedding model
+  semantic). Candidate generation is indexed SQL (`sql.ts`); fusion stays in
+  TypeScript. `terms.ts` holds the allergen/diet vocabulary that both retrieval
+  and generation filter on.
+- `src/cache/` — ioredis handle. Nothing here may fail a turn: every operation
+  swallows its errors and reports a miss.
 - `src/vision/` — Gemini Pro Vision food recognition
 - `src/db/` — Narrow Prisma client plus the boot-time read-model probe
 
 Barcode lookup deliberately stayed in the API (`services/barcode.ts`): it is an
 external data fetch, not inference.
+
+### The chat graph (`services/agent/src/graph`)
+
+```
+                  ┌──────────────► clarify ──► END
+                  │  (the answer materially forks the dish)
+ START ──► router ┼──────────────► respond ──► END
+                  │  (plain conversation)
+                  └──► search ─┬► respond ──► END
+                               │  (a library recipe genuinely fits)
+                               ├► compose ─┬► nutrition ──► respond ──► END
+                               │           └► compose  (one bounded retry)
+                               └► nutrition ──► respond
+```
+
+The edge that matters is `search → compose`. Retrieval that missed used to be
+the end of the road — the reply recommended whatever ranked first. Now a
+shortlist that does not fit *seeds* a dish that does, which is the same path the
+merge case takes: same constraints, same validator, different starting point.
+
+- `state.ts` — The channels. One rule: **everything must survive JSON**, because
+  state is checkpointed. Hence no `Set`, no `Map`, no functions — the constraint
+  set is derived on demand rather than stored, and the runtime callbacks live in
+  `turn-context.ts` (async-local storage) instead.
+- `constraints.ts` — The `STAPLES` list, and the allowed/blocked sets. The
+  allowed set is about usefulness (a dish cookable tonight); the blocked set is
+  about safety and reuses `expandAllergen`/`expandDiet` from retrieval.
+- `validate.ts` — Code, not a model. Modelled on `validateEnrichment`: reject,
+  don't repair. On failure the specific violations go back to the model for one
+  bounded retry, then the turn degrades with the compromise stated.
+- `checkpointer.ts` — An ioredis-backed `BaseCheckpointSaver` with a TTL.
+  Hand-rolled rather than `@langchain/langgraph-checkpoint-redis`, which needs
+  RediSearch; this stack runs plain Redis. Falls back to `MemorySaver` when
+  `REDIS_URL` is unset.
+
+**Allergy safety does not depend on a prompt.** The compose prompt states the
+exclusions and `validate.ts` checks the output against the same term tables
+independently. Tests assert against `expandAllergen` directly, not through a
+model.
 
 ### Web Frontend (`apps/web`)
 

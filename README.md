@@ -174,9 +174,14 @@ npm run db:seed          # Seed database with sample data
 
 ### Environment Variables
 
-#### Backend (.env)
+The keys are split across two `.env` files on purpose: the process that hashes
+passwords and signs tokens holds no model provider credentials.
+
+#### API gateway (`services/api/.env`)
 ```env
-# Database
+# Database. Postgres 15 with pgvector — recipe embeddings are a vector(384)
+# column with an HNSW index, and the migrations run `CREATE EXTENSION vector`.
+# docker-compose uses pgvector/pgvector:pg15 for exactly this reason.
 DATABASE_URL="postgresql://username:password@localhost:5432/petra_ai"
 
 # Redis
@@ -186,14 +191,49 @@ REDIS_URL="redis://localhost:6379"
 JWT_SECRET="your-super-secret-jwt-key-here"
 JWT_REFRESH_SECRET="your-super-secret-refresh-key-here"
 
-# AI Services
-GROQ_API_KEY="your-groq-api-key"
-GEMINI_API_KEY="your-gemini-api-key"
+# Where the agent lives, and the shared secret presented to it.
+AGENT_URL="http://localhost:3002"
+INTERNAL_API_KEY=""   # required in production
 
 # Email
 SMTP_HOST="smtp.gmail.com"
 SMTP_USER="your-email@gmail.com"
 SMTP_PASS="your-app-password"
+```
+
+#### Agent (`services/agent/.env`)
+```env
+# Ideally a role with SELECT on the recipe tables and DML on
+# recipe_embeddings only.
+AGENT_DATABASE_URL="postgresql://username:password@localhost:5432/petra_ai"
+
+# Model providers. Availability is per-account; check what a key can reach:
+#   curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"
+GROQ_API_KEY="your-groq-api-key"
+GOOGLE_AI_API_KEY="your-gemini-api-key"
+GROQ_MODEL_FAST="openai/gpt-oss-20b"
+GROQ_MODEL_SMART="openai/gpt-oss-120b"
+
+INTERNAL_API_KEY=""   # must match the API's
+
+# Redis, for the chat graph's TTL'd working state and the nutrition lookup
+# cache. Unset is supported — both fall back to in-process memory.
+REDIS_URL="redis://localhost:6379"
+GRAPH_STATE_TTL_SECONDS="3600"
+
+# USDA FoodData Central, for raw-ingredient macros. Free key:
+#   https://fdc.nal.usda.gov/api-key-signup.html
+# Unset is supported — nutrition falls back to model estimates and labels them
+# low-confidence rather than presenting a guess as a measurement.
+FDC_API_KEY=""
+
+# Consult an external recipe source when the local corpus is thin. Off by
+# default: each hit is a third-party request on a chat turn's critical path,
+# and TheMealDB is licensed for development and education only.
+RECIPE_OVERFLOW_ENABLED="false"
+
+# Where the ~90MB MiniLM embedding model is cached.
+TRANSFORMERS_CACHE="./.model-cache"
 ```
 
 #### Web Frontend (.env.local)
@@ -204,8 +244,30 @@ NEXT_PUBLIC_WEB_URL="http://localhost:3000"
 
 ### AI Service Setup
 
-1. **GroqAPI**: Sign up at [console.groq.com](https://console.groq.com) for Llama 3 access
-2. **Gemini Pro Vision**: Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. **Groq**: Sign up at [console.groq.com](https://console.groq.com). Serves chat,
+   the router, and recipe composition.
+2. **Gemini Pro Vision**: Get an API key from
+   [Google AI Studio](https://makersuite.google.com/app/apikey). Pantry photo scan.
+3. **USDA FoodData Central**: Free key from
+   [fdc.nal.usda.gov](https://fdc.nal.usda.gov/api-key-signup.html). Raw-ingredient
+   macros. Optional — the nutrition node degrades to labelled estimates without it.
+
+### Building the recipe library
+
+```bash
+# A few hundred photographed recipes over HTTP, no key needed.
+pnpm --filter @petra/api run db:import-recipes
+
+# Or a downloaded open corpus, streamed from disk and idempotent on source.
+# --require-image matters: the app is image-led, and open corpora carry little
+# photography.
+pnpm --filter @petra/api run db:import-dataset -- ./data/recipes.jsonl --require-image
+
+# Then build the semantic vectors. This is the long pole on a large corpus —
+# read the sizing note at the top of the script, and use --limit to measure the
+# rate on a sample before committing to a full run.
+pnpm --filter @petra/agent run embed
+```
 
 ## 📱 Mobile App
 

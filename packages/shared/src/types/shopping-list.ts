@@ -55,18 +55,26 @@ export const GenerateShoppingListSchema = z.object({
   preferredStores: z.array(z.string()).optional(),
 });
 
-export const ShoppingListItemUpdateSchema = z.object({
-  itemId: z.string().uuid(),
-  updates: z.object({
-    isCompleted: z.boolean().optional(),
-    quantity: z.number().min(0).optional(),
-    notes: z.string().optional(),
-    estimatedPrice: z.number().min(0).optional(),
-  }),
-});
+/**
+ * One element of a `PATCH /shopping-lists/:id/items` body.
+ *
+ * The endpoint is an upsert and the `id` field is what selects the branch: an
+ * element **with** an id updates that item, an element **without** one creates
+ * a new item on the list. Items the body does not mention are left alone, so a
+ * partial array is an addition, never a replacement.
+ *
+ * This schema previously described a `{ itemId, updates: {...} }` envelope that
+ * the API has never implemented, so every mobile call was rejected with "items
+ * must be an array" while the web client — which sends this shape — worked. It
+ * also could not express a create at all, since it required `itemId`.
+ */
+export const ShoppingListItemUpsertSchema = z.union([
+  ShoppingListItemSchema.omit({ id: true }),
+  ShoppingListItemSchema.partial().required({ id: true }),
+]);
 
-export const BulkUpdateShoppingListItemsSchema = z.object({
-  updates: z.array(ShoppingListItemUpdateSchema),
+export const BulkUpsertShoppingListItemsSchema = z.object({
+  items: z.array(ShoppingListItemUpsertSchema),
 });
 
 export const ShoppingListSearchSchema = z.object({
@@ -91,8 +99,8 @@ export type ShoppingList = z.infer<typeof ShoppingListSchema>;
 export type CreateShoppingList = z.infer<typeof CreateShoppingListSchema>;
 export type UpdateShoppingList = z.infer<typeof UpdateShoppingListSchema>;
 export type GenerateShoppingList = z.infer<typeof GenerateShoppingListSchema>;
-export type ShoppingListItemUpdate = z.infer<typeof ShoppingListItemUpdateSchema>;
-export type BulkUpdateShoppingListItems = z.infer<typeof BulkUpdateShoppingListItemsSchema>;
+export type ShoppingListItemUpsert = z.infer<typeof ShoppingListItemUpsertSchema>;
+export type BulkUpsertShoppingListItems = z.infer<typeof BulkUpsertShoppingListItemsSchema>;
 export type ShoppingListSearch = z.infer<typeof ShoppingListSearchSchema>;
 export type SmartSuggestion = z.infer<typeof SmartSuggestionSchema>;
 

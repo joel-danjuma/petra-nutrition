@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { View, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { useAuthStore } from '@petra/shared';
 
 import { color, radius, space } from '../../src/theme';
@@ -30,6 +29,7 @@ const SKILL_OPTIONS: { id: 'beginner' | 'confident' | 'experienced'; label: stri
 
 export default function OnboardingScreen() {
   const token = useAuthStore(state => state.token);
+  const setUser = useAuthStore(state => state.setUser);
 
   const [step, setStep] = useState(0);
   const [diets, setDiets] = useState<string[]>([]);
@@ -44,7 +44,7 @@ export default function OnboardingScreen() {
   const finish = async () => {
     setIsSaving(true);
     try {
-      await fetch(`${API_URL}/users/onboarding`, {
+      const response = await fetch(`${API_URL}/users/onboarding`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -54,11 +54,18 @@ export default function OnboardingScreen() {
           cookingSkill: skill,
         }),
       });
+
+      // The route guard keys off `onboardingCompletedAt`, so the stored user
+      // has to carry the server's answer. Without this the guard would keep
+      // sending the user straight back here, forever.
+      const payload = await response.json();
+      if (response.ok && payload?.success && payload.data) {
+        setUser(payload.data);
+      }
     } catch {
       // Non-fatal — preferences can be updated later from Profile.
     } finally {
       setIsSaving(false);
-      router.replace('/(tabs)');
     }
   };
 

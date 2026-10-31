@@ -106,9 +106,22 @@ model RecipeInstruction {
 }
 
 model RecipeEmbedding {
-  id        String   @id @default(uuid())
-  recipeId  String   @unique
-  vector    Float[]
+  id       String @id @default(uuid())
+  recipeId String @unique
+  /// A pgvector column, not a Float[].
+  ///
+  /// The array form worked at a few hundred recipes: the agent loaded every
+  /// public recipe into process memory and scored all of them in JavaScript
+  /// per query. At a million it is multiple gigabytes resident per replica and
+  /// a full scan per turn, which is why bulk import could not land before this
+  /// changed.
+  ///
+  /// Prisma has no native vector type, so the column is `Unsupported` and the
+  /// client cannot read or write it. That is the intended shape: the only code
+  /// that touches it is the agent's retrieval SQL and the embedding script,
+  /// both of which use raw queries and want an indexed `<=>` search rather
+  /// than a serialised array.
+  embedding Unsupported("vector(384)")?
   /// Which model produced this vector — vectors from different models are not
   /// comparable, so a model change must invalidate the whole table.
   model     String

@@ -12,6 +12,8 @@ import { Chip } from '../../src/components/ui/Chip';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { Text } from '../../src/components/ui/Text';
 import { Callout } from '../../src/components/ui/Callout';
+import { errorMessage } from '../../src/api/errors';
+import { addItemsToActiveList } from '../../src/api/shopping';
 import { API_URL } from '../../src/config/api';
 
 interface RecipeIngredient {
@@ -53,9 +55,18 @@ interface RecipeDetail {
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const token = useAuthStore(state => state.token);
-  const { items: pantryItems } = usePantry();
+  const { items: pantryItems, fetchItems } = usePantry();
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  /** Names added to the list this visit, so the rows reflect it immediately. */
+  const [addedNames, setAddedNames] = useState<string[]>([]);
+
+  // Opened from a deep link or a chat card, this screen may be the first thing
+  // rendered, and without the pantry loaded every ingredient reads as missing.
+  useEffect(() => {
+    if (pantryItems.length === 0) fetchItems();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,18 +88,68 @@ export default function RecipeDetailScreen() {
     };
   }, [id, token]);
 
+  // Short names are dropped deliberately: an empty or one-letter pantry name
+  // matches every ingredient through `includes`, which would report a full
+  // pantry and hide the add button entirely.
   const pantryNames = useMemo(
-    () => pantryItems.map(p => p.name.toLowerCase().trim()),
+    () => pantryItems.map(p => p.name.toLowerCase().trim()).filter(n => n.length >= 3),
     [pantryItems]
   );
 
-  const inPantry = (name: string) =>
-    pantryNames.some(n => n.includes(name.toLowerCase()) || name.toLowerCase().includes(n));
+  const inPantry = (name: string) => {
+    const needle = name.toLowerCase().trim();
+    if (needle.length < 3) return false;
+    return pantryNames.some(n => n.includes(needle) || needle.includes(n));
+  };
 
   const haveCount = useMemo(
     () => (recipe ? recipe.ingredients.filter(ing => inPantry(ing.name)).length : 0),
     [recipe, pantryNames]
   );
+
+  /**
+   * Put missing ingredients on the shopping list.
+   *
+   * One request for the whole set, whether that is every missing ingredient or
+   * a single row: the helper reads the active list, works out what genuinely
+   * needs adding, and sends one write. Until now this button only navigated to
+   * the shopping screen and added nothing at all.
+   */
+  const addMissing = async (ingredients: RecipeDetail['ingredients']) => {
+    if (!recipe || isAdding || ingredients.length === 0) return;
+
+    setIsAdding(true);
+    try {
+      const result = await addItemsToActiveList(
+        ingredients.map(ing => ({
+          name: ing.name,
+          quantity: ing.amount || 1,
+          unit: ing.unit || 'piece',
+          // Ingredients carry no category, and this is the same value the
+          // server's own meal-plan generator assigns.
+          category: 'OTHER',
+          priority: 'MEDIUM',
+          isCompleted: false,
+          recipeId: recipe.id,
+          recipeName: recipe.title,
+        })),
+        `${recipe.title} shop`
+      );
+
+      setAddedNames(prev => [...prev, ...ingredients.map(ing => ing.name.toLowerCase())]);
+
+      if (!result) {
+        Alert.alert('Already on your list', 'Nothing new to add from this recipe.');
+        return;
+      }
+
+      router.push('/shopping');
+    } catch (error) {
+      Alert.alert('Could not add to your list', errorMessage(error, 'Please try again.'));
+    } finally {
+      setIsAdding(false);
+    }
+  };
 
   const toggleFavorite = async () => {
     if (!recipe) return;
@@ -216,33 +277,67 @@ export default function RecipeDetailScreen() {
             <Card padded={false}>
               {recipe.ingredients.map((ing, i) => {
                 const have = inPantry(ing.name);
-                return (
-                  <View
-                    key={ing.id}
-                    style={[
-                      styles.ingredientRow,
-                      i < recipe.ingredients.length - 1 && styles.rowDivider,
-                    ]}
-                  >
-                    <View style={[styles.ingredientDot, have && styles.ingredientDotOn]}>
+                const listed = addedNames.includes(ing.name.toLowerCase());
+                const row = (
+                  <>
+                    <View
+                      style={[
+                        styles.ingredientDot,
+                        have && styles.ingredientDotOn,
+                        listed && styles.ingredientDotListed,
+                      ]}
+                    >
                       {have ? (
                         <Check size={11} color={color.white} strokeWidth={2.4} />
                       ) : (
-                        <Plus size={11} color={color.muted} strokeWidth={2.4} />
+                        <Plus
+                          size={11}
+                          color={listed ? color.ink : color.muted}
+                          strokeWidth={2.4}
+                        />
                       )}
                     </View>
                     <Text preset="labelMd" color={color.ink} style={styles.flex}>
                       {ing.name}
                     </Text>
                     <Text preset="caption">
-                      {ing.amount} {ing.unit}
+                      {listed ? 'On your list' : `${ing.amount} ${ing.unit}`}
                     </Text>
+                  </>
+                );
+
+                const rowStyle = [
+                  styles.ingredientRow,
+                  i < recipe.ingredients.length - 1 && styles.rowDivider,
+                ];
+
+                // Only a missing ingredient is actionable. The check means it
+                // is already in the pantry, and tapping that should do nothing.
+                return have || listed ? (
+                  <View key={ing.id} style={rowStyle}>
+                    {row}
                   </View>
+                ) : (
+                  <Pressable
+                    key={ing.id}
+                    style={rowStyle}
+                    onPress={() => addMissing([ing])}
+                    disabled={isAdding}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${ing.name} to your shopping list`}
+                  >
+                    {row}
+                  </Pressable>
                 );
               })}
             </Card>
             {missingCount > 0 && (
-              <Button variant="secondary" onPress={() => router.push('/shopping')} fullWidth>
+              <Button
+                variant="secondary"
+                onPress={() => addMissing(recipe.ingredients.filter(ing => !inPantry(ing.name)))}
+                loading={isAdding}
+                fullWidth
+              >
                 {`Add the ${missingCount} missing to my list`}
               </Button>
             )}
@@ -351,6 +446,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  ingredientDotListed: { borderColor: color.ink, backgroundColor: color.surfaceSoft },
   ingredientDotOn: { backgroundColor: color.ink },
   stepRow: { flexDirection: 'row', gap: space.sm },
   stepNumber: {

@@ -305,7 +305,7 @@ export class ChatController {
       // decisions now — it owns the recipe index and the token budget.
       const startedAt = Date.now();
       const aiResponse = await agentClient.chat(
-        this.buildAgentRequest(req, recentMessages, aiContext)
+        this.buildAgentRequest(req, recentMessages, aiContext, sessionId)
       );
       const agentLatencyMs = Date.now() - startedAt;
 
@@ -320,6 +320,13 @@ export class ChatController {
           structuredData: aiResponse.structuredData,
           // Drives the tappable recipe card in the chat stream.
           recipeId: aiResponse.recipeId,
+          // A composed dish has no `recipeId` to reopen, so it is stored with
+          // the message. Otherwise scrolling back to yesterday's generated
+          // recipe shows the prose and nothing to cook from.
+          generatedRecipe: aiResponse.generatedRecipe,
+          nutrition: aiResponse.nutrition,
+          assumptions: aiResponse.assumptions,
+          compromises: aiResponse.compromises,
         },
       });
 
@@ -345,6 +352,13 @@ export class ChatController {
           // Hydrated so the chat card renders without a second round trip.
           recipe: await this.hydrateRecipeCard(aiResponse.recipeId),
           suggestions: aiResponse.suggestions,
+          // Present when the assistant composed a dish rather than finding
+          // one. Unlike `recipe`, there is nothing to hydrate: this *is* the
+          // recipe, until the user saves it.
+          generatedRecipe: aiResponse.generatedRecipe,
+          nutrition: aiResponse.nutrition,
+          assumptions: aiResponse.assumptions,
+          compromises: aiResponse.compromises,
         },
         metadata: {
           timestamp: new Date().toISOString(),
@@ -402,7 +416,7 @@ export class ChatController {
     // here can still be an honest HTTP error handled by the error middleware,
     // rather than a 200 carrying an error frame.
     const upstream = await agentClient.chatStream(
-      this.buildAgentRequest(req, recentMessages, aiContext),
+      this.buildAgentRequest(req, recentMessages, aiContext, sessionId),
       controller.signal
     );
 
@@ -442,6 +456,14 @@ export class ChatController {
             type: finalResponse.type,
             confidence: finalResponse.confidence,
             recipeId: finalResponse.recipeId,
+            // A composed dish has no `recipeId` to reopen, so the payload
+            // itself is stored with the message. Without this, scrolling back
+            // to yesterday's generated recipe shows the prose and an empty
+            // card — the recipe existed only in that response.
+            generatedRecipe: finalResponse.generatedRecipe,
+            nutrition: finalResponse.nutrition,
+            assumptions: finalResponse.assumptions,
+            compromises: finalResponse.compromises,
           },
         });
       }
@@ -687,7 +709,8 @@ export class ChatController {
   private buildAgentRequest(
     req: Request,
     recentMessages: { role: string; content: unknown }[],
-    context: AgentContext
+    context: AgentContext,
+    sessionId?: string
   ): ChatRequest {
     return {
       messages: recentMessages.map(msg => ({
@@ -700,6 +723,15 @@ export class ChatController {
           req.user!.subscriptionTier === 'PREMIUM' ? 'PREMIUM' : 'FREE',
       },
       context,
+      // The chat session, so the agent's ephemeral graph state lines up with
+      // the conversation the user is actually having. Deliberately the session
+      // id and not the user id: one user can have several conversations, and
+      // they should not share working state.
+      //
+      // This does not move ownership of anything. The transcript is still ours;
+      // what the agent keeps under this key is a TTL'd copy of one turn's
+      // working channels, holding nothing the request did not already carry.
+      ...(sessionId ? { options: { threadId: sessionId } } : {}),
     };
   }
 

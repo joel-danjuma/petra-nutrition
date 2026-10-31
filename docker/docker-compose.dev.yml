@@ -3,7 +3,10 @@ version: '3.8'
 services:
   # PostgreSQL Database for Development
   postgres:
-    image: postgres:15-alpine
+    # pgvector's image, not plain alpine: recipe embeddings are a
+    # `vector(384)` column and the migration runs `CREATE EXTENSION vector`.
+    # Same Postgres 15 underneath, so an existing volume carries over.
+    image: pgvector/pgvector:pg15
     container_name: petra-postgres-dev
     restart: unless-stopped
     environment:

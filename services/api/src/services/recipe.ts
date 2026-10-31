@@ -1,6 +1,7 @@
 import { prisma } from '../database';
 import { logger } from '../utils/logger';
 import { Difficulty } from '@prisma/client';
+import type { SaveGeneratedRecipeRequest } from '@petra/agent-contract';
 
 export interface RecipeFilters {
   query?: string;
@@ -142,6 +143,99 @@ export class RecipeService {
       logger.error('Failed to create recipe:', error);
       throw error;
     }
+  }
+
+  /**
+   * Persist a recipe the agent composed, with the macros it computed.
+   *
+   * The agent returns validated fields and writes nothing — the same division
+   * as enrichment, and for the same reason: the API owns the `recipes` table
+   * and every migration against it. By the time a payload reaches here it has
+   * already been through the agent's validator (every ingredient inside the
+   * allowed set, no blocked term, steps that reference what they use) and
+   * through `saveGeneratedRecipeRequestSchema` at the route. This function's
+   * job is the write, not the judgement.
+   *
+   * Saved private and attributed to the user. A generation is a dish written
+   * for one person's kitchen out of one person's ingredients; publishing it to
+   * the shared corpus by default would fill the library with near-duplicates
+   * nobody chose to share.
+   *
+   * `isAIGenerated` and the `generated:` source prefix are what make these
+   * separable later — from analytics, from an export, or from a decision to
+   * stop trusting a model's output.
+   */
+  async createFromGeneration(
+    userId: string,
+    recipe: SaveGeneratedRecipeRequest['recipe'],
+    nutrition?: SaveGeneratedRecipeRequest['nutrition']
+  ) {
+    const prepTime = recipe.prepTime ?? 0;
+    const cookTime = recipe.cookTime ?? 0;
+
+    return prisma.recipe.create({
+      data: {
+        title: recipe.title,
+        description: recipe.description ?? null,
+        imageUrl: null,
+        servings: recipe.servings,
+        prepTime,
+        cookTime,
+        totalTime: prepTime + cookTime,
+        difficulty: recipe.difficulty as Difficulty,
+        cuisine: recipe.cuisine ?? null,
+        mealCategory: null,
+        dietaryTags: [],
+        createdById: userId,
+        isAIGenerated: true,
+        // Records which library recipes seeded it, when it came from the merge
+        // path. Enough to answer "where did this come from" without a table.
+        source: `generated:${recipe.inspiredBy.join(',') || 'scratch'}`,
+        isPublic: false,
+        safetyNote: recipe.safetyNote ?? null,
+        zeroWasteNote: recipe.zeroWasteNote ?? null,
+        ingredients: {
+          create: recipe.ingredients.map((i, index) => ({
+            name: i.name,
+            amount: i.amount,
+            unit: i.unit,
+            notes: i.notes ?? null,
+            order: index + 1,
+          })),
+        },
+        instructions: {
+          create: recipe.instructions.map((s, index) => ({
+            step: index + 1,
+            instruction: s.instruction,
+            duration: s.duration ?? null,
+            tip: s.tip ?? null,
+          })),
+        },
+        // Carried across rather than re-estimated. These came from a nutrition
+        // database and deterministic arithmetic; asking a model for them again
+        // at save time would replace a checkable number with a plausible one.
+        ...(nutrition
+          ? {
+              nutrition: {
+                create: {
+                  calories: nutrition.perServing.calories,
+                  protein: nutrition.perServing.protein,
+                  carbs: nutrition.perServing.carbs,
+                  fat: nutrition.perServing.fat,
+                  fiber: nutrition.perServing.fiber ?? null,
+                  sugar: nutrition.perServing.sugar ?? null,
+                  sodium: nutrition.perServing.sodium ?? null,
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        ingredients: { orderBy: { order: 'asc' } },
+        instructions: { orderBy: { step: 'asc' } },
+        nutrition: true,
+      },
+    });
   }
 
   async update(id: string, userId: string, data: any) {

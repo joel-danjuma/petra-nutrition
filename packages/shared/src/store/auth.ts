@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { User, AuthResponse, Login, CreateUser } from '../types';
-import { PetraApiEndpoints } from '../api';
+import { getApiEndpoints, requireApiEndpoints } from '../api';
 
 interface AuthState {
   user: User | null;
@@ -78,11 +78,7 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
         
         try {
-          // This would be injected by the consuming app
-          const api = (get() as any).api as PetraApiEndpoints;
-          if (!api) {
-            throw new Error('API client not initialized');
-          }
+          const api = requireApiEndpoints();
 
           const response = await api.auth.login(credentials);
           
@@ -116,10 +112,7 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
         
         try {
-          const api = (get() as any).api as PetraApiEndpoints;
-          if (!api) {
-            throw new Error('API client not initialized');
-          }
+          const api = requireApiEndpoints();
 
           const response = await api.auth.register(userData);
           
@@ -149,7 +142,9 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       logout: () => {
-        const api = (get() as any).api as PetraApiEndpoints;
+        // Deliberately the optional accessor: signing out must clear local
+        // state even if the app never finished wiring its API client.
+        const api = getApiEndpoints();
         if (api) {
           api.client.setAuthToken(null);
           // Call logout endpoint to invalidate server-side session
@@ -174,10 +169,7 @@ export const useAuthStore = create<AuthStore>()(
         }
 
         try {
-          const api = (get() as any).api as PetraApiEndpoints;
-          if (!api) {
-            throw new Error('API client not initialized');
-          }
+          const api = requireApiEndpoints();
 
           const response = await api.auth.refreshToken();
           
@@ -212,10 +204,7 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
 
         try {
-          const api = (get() as any).api as PetraApiEndpoints;
-          if (!api) {
-            throw new Error('API client not initialized');
-          }
+          const api = requireApiEndpoints();
 
           const response = await api.users.updateProfile(updates);
           

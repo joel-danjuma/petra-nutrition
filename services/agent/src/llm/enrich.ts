@@ -3,6 +3,8 @@ import type {
   EnrichRecipeResponse,
 } from '@petra/agent-contract';
 
+import { analyse } from '../nutrition';
+import { logger } from '../utils/logger';
 import { AIChatService } from './groq';
 
 /**
@@ -110,6 +112,58 @@ export function validateEnrichment(
   };
 }
 
+/**
+ * Replace the model's macro estimate with computed figures, where we can.
+ *
+ * Enrichment and the graph's nutrition node answer the same question about the
+ * same dish, and until this existed they answered it differently: enrichment
+ * asked a model and bounded the result for plausibility, while the node summed
+ * database rows. Two numbers for one recipe is worse than either number alone,
+ * because the one on the recipe screen and the one in the chat reply disagree
+ * and neither is obviously wrong.
+ *
+ * So the computed figures win when they are trustworthy, and the model's
+ * estimate stays when they are not — a recipe whose ingredients could not be
+ * resolved would otherwise come back with a confident-looking zero. The choice
+ * is logged, because "where did this number come from" is the first question
+ * anyone asks of a macro panel.
+ */
+async function reconcileNutrition(
+  enrichment: EnrichRecipeResponse,
+  recipe: EnrichRecipeRequest
+): Promise<EnrichRecipeResponse> {
+  try {
+    const computed = await analyse({
+      servings: recipe.servings,
+      ingredients: recipe.ingredients,
+    });
+
+    if (computed.confidence === 'low') {
+      logger.info('Keeping the model estimate for enrichment nutrition', {
+        recipe: recipe.title,
+        reason: 'ingredient resolution was incomplete',
+      });
+      return enrichment;
+    }
+
+    logger.info('Using computed nutrition for enrichment', {
+      recipe: recipe.title,
+      confidence: computed.confidence,
+      caloriesPerServing: computed.perServing.calories,
+    });
+
+    return { ...enrichment, nutrition: computed.perServing };
+  } catch (error) {
+    // The rest of the enrichment — times, notes, step tips — is still worth
+    // returning, so a nutrition-database outage does not fail an import.
+    logger.warn('Nutrition computation failed during enrichment; keeping the estimate', {
+      recipe: recipe.title,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return enrichment;
+  }
+}
+
 export async function enrichRecipe(
   ai: AIChatService,
   recipe: EnrichRecipeRequest
@@ -139,5 +193,7 @@ ${steps}`;
     false
   );
 
-  return validateEnrichment(parseJson(response.content), recipe.instructions.length);
+  const enrichment = validateEnrichment(parseJson(response.content), recipe.instructions.length);
+
+  return reconcileNutrition(enrichment, recipe);
 }

@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronLeft, ShoppingCart } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuthStore, usePantry } from '@petra/shared';
+import { usePantry } from '@petra/shared';
 
+import { errorMessage } from '../../src/api/errors';
+import { loadActiveList, setItemCompleted, type ShoppingListData } from '../../src/api/shopping';
 import { color, radius, space } from '../../src/theme';
 import { Card, onSurface } from '../../src/components/ui/Card';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { SectionHeader } from '../../src/components/ui/SectionHeader';
+import { ErrorBanner } from '../../src/components/ui/ErrorBanner';
 import { Text } from '../../src/components/ui/Text';
-import { API_URL } from '../../src/config/api';
 
 const CATEGORY_LABELS: Record<string, string> = {
   PRODUCE: 'Produce',
@@ -37,31 +39,23 @@ interface ShoppingItem {
   isCompleted: boolean;
 }
 
-interface ShoppingListData {
-  id: string;
-  items: ShoppingItem[];
-}
-
 export default function ShoppingListScreen() {
-  const token = useAuthStore(state => state.token);
   const { items: pantryItems } = usePantry();
   const [list, setList] = useState<ShoppingListData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/shopping-lists?limit=1`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) setList(data.data?.shoppingLists?.[0] ?? null);
-    } catch {
-      Alert.alert('Error', 'Failed to load your shopping list.');
+      setList(await loadActiveList());
+    } catch (err) {
+      setError(errorMessage(err, 'Could not load your shopping list.'));
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -81,14 +75,13 @@ export default function ShoppingListScreen() {
         : prev
     );
     try {
-      await fetch(`${API_URL}/shopping-lists/${list.id}/items`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updates: [{ itemId: item.id, updates: { isCompleted: nextCompleted } }],
-        }),
-      });
-    } catch {
+      // Sends the whole item under `items`, which is what the endpoint has
+      // always required. The old `{ updates: [...] }` envelope came from a
+      // shared schema the API never implemented, so every tick was rejected —
+      // and because fetch resolves on a 400, nothing here ever noticed.
+      await setItemCompleted(list.id, item, nextCompleted);
+      setError(null);
+    } catch (err) {
       setList(prev =>
         prev
           ? {
@@ -99,6 +92,7 @@ export default function ShoppingListScreen() {
             }
           : prev
       );
+      setError(errorMessage(err, 'That change did not save.'));
     }
   };
 
@@ -165,6 +159,8 @@ export default function ShoppingListScreen() {
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${pct}%` }]} />
       </View>
+
+      {error ? <ErrorBanner message={error} onRetry={load} style={styles.errorBanner} /> : null}
 
       {isLoading ? (
         <View style={styles.centered}>
@@ -269,6 +265,7 @@ const styles = StyleSheet.create({
     padding: space.xl,
     gap: space.sm,
   },
+  errorBanner: { marginHorizontal: space.lg, marginBottom: space.md },
   body: { padding: space.lg, gap: space.lg },
   row: {
     flexDirection: 'row',

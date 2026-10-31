@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { PantryItem, CreatePantryItem, UpdatePantryItem, PantrySearch, PantryStats } from '../types';
-import { PetraApiEndpoints } from '../api';
+import { requireApiEndpoints } from '../api';
 
 interface PantryState {
   items: PantryItem[];
@@ -46,10 +46,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.getItems(params);
       
@@ -72,10 +69,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
 
   fetchStats: async () => {
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.getStats();
       
@@ -91,10 +85,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.create(item);
       
@@ -124,10 +115,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.update(id, updates);
       
@@ -161,10 +149,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.delete(id, reason);
       
@@ -198,10 +183,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.bulkUpdate(itemUpdates);
       
@@ -222,10 +204,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
 
   scanBarcode: async (barcode: string) => {
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.scanBarcode({ barcode });
       
@@ -241,10 +220,7 @@ export const usePantryStore = create<PantryStore>((set, get) => ({
 
   recognizeImage: async (imageData: string) => {
     try {
-      const api = (get() as any).api as PetraApiEndpoints;
-      if (!api) {
-        throw new Error('API client not initialized');
-      }
+      const api = requireApiEndpoints();
 
       const response = await api.pantry.recognizeImage({ 
         imageBase64: imageData,

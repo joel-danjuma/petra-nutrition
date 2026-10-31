@@ -39,6 +39,41 @@ export const config = {
   /** Shared secret the API presents. The agent has no other authentication. */
   INTERNAL_API_KEY: process.env.INTERNAL_API_KEY || '',
 
+  /**
+   * Redis, used for two things the agent owns outright: graph working state and
+   * the nutrition-database lookup cache. Neither is durable — the API still
+   * owns the transcript, and a cold cache costs latency rather than
+   * correctness — so the agent degrades to in-process memory when Redis is
+   * unreachable rather than refusing to answer.
+   */
+  REDIS_URL: process.env.REDIS_URL || '',
+
+  /**
+   * How long a graph thread's working state lives. Long enough to resume a
+   * turn the user is still in, short enough that abandoned conversations do
+   * not accumulate in a cache nobody prunes.
+   */
+  GRAPH_STATE_TTL_SECONDS: parseInt(process.env.GRAPH_STATE_TTL_SECONDS || '3600', 10),
+
+  /**
+   * USDA FoodData Central, for raw-ingredient macros. Free, and rate limited
+   * per key. Unset is a supported configuration: the nutrition node falls back
+   * to a model estimate and labels the result low-confidence, which is honest
+   * and still better than no macros at all.
+   */
+  FDC_API_KEY: process.env.FDC_API_KEY || '',
+
+  /**
+   * Consult an external recipe source when the local corpus is thin.
+   *
+   * Off by default, because every hit is a third-party request on the critical
+   * path of a chat turn, and because the source currently available
+   * (TheMealDB) is licensed for development and education only. External
+   * results seed the compose node; they are never recommended, since a recipe
+   * with no row cannot be opened or cooked from.
+   */
+  RECIPE_OVERFLOW_ENABLED: process.env.RECIPE_OVERFLOW_ENABLED === 'true',
+
   TRANSFORMERS_CACHE: process.env.TRANSFORMERS_CACHE || './.model-cache',
 
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
@@ -76,4 +111,37 @@ export const validateConfig = (): void => {
   if (!config.DATABASE_URL.startsWith('postgresql://')) {
     throw new Error('DATABASE_URL must be a valid PostgreSQL connection string');
   }
+};
+
+/**
+ * Configuration that is missing but not fatal.
+ *
+ * Returned rather than logged because `config` must not import the logger —
+ * the logger reads `config`, and the cycle resolves to an undefined logger at
+ * module-init time. The entry point logs these once at boot.
+ *
+ * Both entries below are deliberately warnings. Chat has to keep working when
+ * the cache and the nutrition database are unavailable, so refusing to boot
+ * over either would be a worse trade than degrading.
+ */
+export const configWarnings = (): string[] => {
+  const warnings: string[] = [];
+
+  if (!config.REDIS_URL) {
+    warnings.push(
+      'REDIS_URL is unset — graph state and nutrition lookups will use ' +
+        'in-process memory, which does not survive a restart and is not shared ' +
+        'between replicas.'
+    );
+  }
+
+  if (!config.FDC_API_KEY) {
+    warnings.push(
+      'FDC_API_KEY is unset — nutrition will fall back to model estimates and ' +
+        'label them low-confidence. A key is free: ' +
+        'https://fdc.nal.usda.gov/api-key-signup.html'
+    );
+  }
+
+  return warnings;
 };

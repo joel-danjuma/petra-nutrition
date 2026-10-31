@@ -22,10 +22,32 @@ const apiClient = new ApiClient({
   },
 });
 
-// Inject the API into the store before anything renders, then point auth
-// persistence at AsyncStorage and load any saved session.
+// Inject the API into the store before anything renders. This is synchronous
+// and touches no mounted component, so module scope is the right place for it.
 initializeStores(apiClient);
-configureAuthStorage(AsyncStorage);
+
+let hydrationStarted = false;
+
+/**
+ * Point auth persistence at AsyncStorage and load any saved session.
+ *
+ * Called from an effect in the root layout rather than at module scope. The
+ * read is asynchronous, and starting it during module evaluation meant it could
+ * resolve while React was still mounting the first tree — React then warns
+ * about a state update on a component that has not mounted yet, because the
+ * store update arrives mid-mount. Starting it after mount removes the race.
+ *
+ * Idempotent: Fast Refresh re-runs effects, and rehydrating twice would reset
+ * the store from storage under a user who had already signed in.
+ */
+export function startAuthHydration(): void {
+  if (hydrationStarted) return;
+  hydrationStarted = true;
+  // The store's onRehydrateStorage flips `hasHydrated` whether the read
+  // succeeded or failed, so a rejection here is only worth catching to keep it
+  // from surfacing as an unhandled promise rejection.
+  void Promise.resolve(configureAuthStorage(AsyncStorage)).catch(() => undefined);
+}
 
 interface ApiProviderProps {
   children: ReactNode;
