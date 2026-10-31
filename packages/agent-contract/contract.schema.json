@@ -1,0 +1,1081 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PetraAgentContract",
+  "definitions": {
+    "AgentContext": {
+      "type": "object",
+      "properties": {
+        "userPreferences": {},
+        "currentPantryItems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "pantryNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "dietaryRestrictions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "healthGoals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "allergies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "activeMealPlan": {
+          "type": "string"
+        },
+        "lastRecipeSearch": {
+          "type": "string"
+        },
+        "profileUnavailable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "AgentHealth": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "healthy",
+            "degraded",
+            "unhealthy"
+          ]
+        },
+        "uptime": {
+          "type": "number"
+        },
+        "checks": {
+          "type": "object",
+          "properties": {
+            "database": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down"
+              ]
+            },
+            "llm": {
+              "type": "string",
+              "enum": [
+                "configured",
+                "missing"
+              ]
+            },
+            "embeddings": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "loading",
+                "unavailable"
+              ]
+            }
+          },
+          "required": [
+            "database",
+            "llm",
+            "embeddings"
+          ]
+        },
+        "recipesIndexed": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "status",
+        "uptime",
+        "checks"
+      ]
+    },
+    "AgentUser": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "subscriptionTier": {
+          "type": "string",
+          "enum": [
+            "FREE",
+            "PREMIUM"
+          ],
+          "default": "FREE"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "ChatMessage": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "$ref": "#/definitions/ChatRole"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ]
+    },
+    "ChatRequest": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ChatMessage"
+          },
+          "minItems": 1
+        },
+        "user": {
+          "$ref": "#/definitions/AgentUser"
+        },
+        "context": {
+          "$ref": "#/definitions/AgentContext"
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "maxRetrieved": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        }
+      },
+      "required": [
+        "messages",
+        "user"
+      ]
+    },
+    "ChatResponse": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/ChatResponseType"
+        },
+        "structuredData": {},
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipeId": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "model": {
+          "type": "string"
+        },
+        "tokensUsed": {
+          "type": "number"
+        },
+        "generatedRecipe": {
+          "$ref": "#/definitions/GeneratedRecipe"
+        },
+        "nutrition": {
+          "$ref": "#/definitions/NutritionBreakdown"
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "compromises": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "content",
+        "type"
+      ]
+    },
+    "ChatResponseType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "recipe_suggestion",
+        "meal_plan_suggestion",
+        "pantry_update",
+        "shopping_list_generation",
+        "generated_recipe"
+      ]
+    },
+    "ChatRole": {
+      "type": "string",
+      "enum": [
+        "system",
+        "user",
+        "assistant"
+      ]
+    },
+    "DetectedPantryItem": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        },
+        "estimatedQuantity": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "nutritionPer100g": {
+          "type": "object",
+          "properties": {
+            "calories": {
+              "type": "number"
+            },
+            "protein": {
+              "type": "number"
+            },
+            "carbs": {
+              "type": "number"
+            },
+            "fat": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "required": [
+        "name",
+        "category",
+        "confidence"
+      ]
+    },
+    "EnrichRecipeRequest": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "cuisine": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "servings": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "ingredients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "amount",
+              "unit"
+            ]
+          }
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "integer"
+              },
+              "instruction": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step",
+              "instruction"
+            ]
+          }
+        }
+      },
+      "required": [
+        "title",
+        "servings",
+        "ingredients",
+        "instructions"
+      ]
+    },
+    "EnrichRecipeResponse": {
+      "type": "object",
+      "properties": {
+        "prepTime": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cookTime": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "EASY",
+            "MEDIUM",
+            "HARD"
+          ]
+        },
+        "nutrition": {
+          "type": "object",
+          "properties": {
+            "calories": {
+              "type": "number",
+              "minimum": 0
+            },
+            "protein": {
+              "type": "number",
+              "minimum": 0
+            },
+            "carbs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "fat": {
+              "type": "number",
+              "minimum": 0
+            },
+            "fiber": {
+              "type": "number",
+              "minimum": 0
+            },
+            "sugar": {
+              "type": "number",
+              "minimum": 0
+            },
+            "sodium": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "calories",
+            "protein",
+            "carbs",
+            "fat"
+          ]
+        },
+        "safetyNote": {
+          "type": "string"
+        },
+        "zeroWasteNote": {
+          "type": "string"
+        },
+        "stepTips": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "integer"
+              },
+              "tip": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step",
+              "tip"
+            ]
+          }
+        }
+      },
+      "required": [
+        "prepTime",
+        "cookTime",
+        "difficulty",
+        "nutrition",
+        "safetyNote",
+        "zeroWasteNote",
+        "stepTips"
+      ]
+    },
+    "GeneratedRecipe": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "cuisine": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "servings": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "prepTime": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cookTime": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "EASY",
+            "MEDIUM",
+            "HARD"
+          ]
+        },
+        "ingredients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "amount": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "unit": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "staple": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "amount",
+              "unit"
+            ]
+          },
+          "minItems": 1
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "instruction": {
+                "type": "string",
+                "minLength": 1
+              },
+              "duration": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tip": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step",
+              "instruction"
+            ]
+          },
+          "minItems": 1
+        },
+        "safetyNote": {
+          "type": "string"
+        },
+        "zeroWasteNote": {
+          "type": "string"
+        },
+        "inspiredBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "title",
+        "servings",
+        "prepTime",
+        "cookTime",
+        "difficulty",
+        "ingredients",
+        "instructions"
+      ]
+    },
+    "GraphNode": {
+      "type": "string",
+      "enum": [
+        "router",
+        "search",
+        "compose_recipe",
+        "nutrition",
+        "respond"
+      ]
+    },
+    "IndexRebuildRequest": {
+      "type": "object",
+      "properties": {
+        "recipeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "default": []
+        }
+      }
+    },
+    "IndexRebuildResponse": {
+      "type": "object",
+      "properties": {
+        "invalidated": {
+          "type": "boolean"
+        },
+        "embedded": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "invalidated",
+        "embedded"
+      ]
+    },
+    "NutritionBreakdown": {
+      "type": "object",
+      "properties": {
+        "perServing": {
+          "$ref": "#/definitions/NutritionFacts"
+        },
+        "servings": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NutritionProvenance"
+          }
+        }
+      },
+      "required": [
+        "perServing",
+        "servings",
+        "confidence",
+        "items"
+      ]
+    },
+    "NutritionFacts": {
+      "type": "object",
+      "properties": {
+        "calories": {
+          "type": "number",
+          "minimum": 0
+        },
+        "protein": {
+          "type": "number",
+          "minimum": 0
+        },
+        "carbs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fat": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fiber": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sugar": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sodium": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "calories",
+        "protein",
+        "carbs",
+        "fat"
+      ]
+    },
+    "NutritionProvenance": {
+      "type": "object",
+      "properties": {
+        "ingredient": {
+          "type": "string"
+        },
+        "grams": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "usda",
+            "openfoodfacts",
+            "excluded",
+            "unresolved"
+          ]
+        },
+        "matchedAs": {
+          "type": "string"
+        },
+        "fdcId": {
+          "type": "number"
+        },
+        "assumption": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ingredient",
+        "grams",
+        "source"
+      ]
+    },
+    "ReceiptItem": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "unit": {
+          "type": "string"
+        },
+        "expiresInDays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3650
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "name",
+        "category",
+        "confidence"
+      ]
+    },
+    "ReceiptRequest": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "image"
+      ]
+    },
+    "ReceiptResponse": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReceiptItem"
+          }
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "RetrieveRequest": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "pantry": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "allergies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "dietaryRestrictions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 6
+        },
+        "ownerId": {
+          "type": "string"
+        }
+      }
+    },
+    "RetrieveResponse": {
+      "type": "object",
+      "properties": {
+        "recipes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RetrievedRecipe"
+          }
+        }
+      },
+      "required": [
+        "recipes"
+      ]
+    },
+    "RetrievedRecipe": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "imageUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuisine": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totalTime": {
+          "type": "number"
+        },
+        "servings": {
+          "type": "number"
+        },
+        "dietaryTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matched": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coverage": {
+          "type": "number"
+        },
+        "score": {
+          "type": "number"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "imageUrl",
+        "cuisine",
+        "totalTime",
+        "servings",
+        "dietaryTags",
+        "matched",
+        "missing",
+        "coverage",
+        "score",
+        "reasons"
+      ]
+    },
+    "SaveGeneratedRecipeRequest": {
+      "type": "object",
+      "properties": {
+        "recipe": {
+          "$ref": "#/definitions/GeneratedRecipe"
+        },
+        "nutrition": {
+          "$ref": "#/definitions/NutritionBreakdown"
+        }
+      },
+      "required": [
+        "recipe"
+      ]
+    },
+    "StreamEvent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "chunk"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "content"
+              ]
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "done"
+            },
+            "data": {
+              "$ref": "#/definitions/ChatResponse"
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "node"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "node": {
+                  "$ref": "#/definitions/GraphNode"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "node",
+                "label"
+              ]
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "interrupt"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                }
+              },
+              "required": [
+                "question"
+              ]
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "error"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ]
+            }
+          },
+          "required": [
+            "event",
+            "data"
+          ]
+        }
+      ]
+    },
+    "VisionRequest": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context": {
+          "type": "string",
+          "default": "pantry_item"
+        }
+      },
+      "required": [
+        "image"
+      ]
+    }
+  }
+}
