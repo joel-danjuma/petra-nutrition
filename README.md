@@ -82,6 +82,9 @@ This project is built as a **monorepo** containing three main applications:
    # Edit docker/.env with production values
    ```
 
+   `POSTGRES_PASSWORD` and `REDIS_PASSWORD` have no defaults: Compose refuses
+   to start the stack until both are set.
+
 2. **Deploy with Docker Compose**
    ```bash
    cd docker

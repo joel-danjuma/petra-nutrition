@@ -17,7 +17,7 @@ services:
     environment:
       POSTGRES_DB: petra_ai
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -36,7 +36,7 @@ services:
     image: redis:7-alpine
     container_name: petra-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     volumes:
       - redis_data:/data
     ports:
@@ -58,8 +58,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/petra_ai
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/petra_ai
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       # No GROQ_API_KEY or GEMINI_API_KEY here — the process that hashes
@@ -109,7 +109,7 @@ services:
       AGENT_PORT: 3002
       # Should be a role with SELECT on the recipe tables and DML on
       # recipe_embeddings only. The agent owns its index and nothing else.
-      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/petra_ai}
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/petra_ai}
       GROQ_API_KEY: ${GROQ_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GROQ_MODEL_FAST: ${GROQ_MODEL_FAST:-openai/gpt-oss-20b}
@@ -121,7 +121,7 @@ services:
       # degrades to in-process memory if this is unreachable, so it is not a
       # startup dependency in the strict sense; `depends_on` only avoids a
       # pointless first-minute warning.
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379
       GRAPH_STATE_TTL_SECONDS: ${GRAPH_STATE_TTL_SECONDS:-3600}
       # USDA FoodData Central, for raw-ingredient macros. Free key; unset means
       # nutrition falls back to labelled low-confidence estimates.
