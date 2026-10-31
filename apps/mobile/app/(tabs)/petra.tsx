@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   TextInput,
@@ -12,7 +12,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowRight } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuth, useAuthStore } from '@petra/shared';
+import {
+  ChatTurnError,
+  errorMessage,
+  messageRole,
+  messageText,
+  replyFromStoredMessage,
+  saveGeneratedRecipe,
+  startChatTurn,
+  useApi,
+  useAuth,
+  useIsAuthenticated,
+  type ChatRecipeCard,
+  type ChatReply,
+  type StoredChatMessage,
+} from '@petra/shared';
 
 import { color, fontSize, radius, space, type } from '../../src/theme';
 import { ChatMessage } from '../../src/components/ChatMessage';
@@ -20,54 +34,52 @@ import { Chip } from '../../src/components/ui/Chip';
 import { LoadingDots } from '../../src/components/ui/LoadingDots';
 import { Text } from '../../src/components/ui/Text';
 import { RecipeCard, RecipeCardSummary } from '../../src/components/RecipeCard';
-import { API_URL } from '../../src/config/api';
 
 /**
- * A dish Petra composed rather than retrieved.
- *
- * Declared structurally here rather than imported from @petra/agent-contract:
- * the client only reads these fields, and importing the contract would pull zod
- * through Metro for types alone. The web chat does the same thing for the same
- * reason.
+ * One bubble. An assistant entry carries the whole `ChatReply` — the shared
+ * module's type, which is the agent contract's — so there is no local copy of
+ * the recipe or nutrition shapes to drift.
  */
-interface GeneratedRecipe {
-  title: string;
-  description?: string;
-  cuisine?: string | null;
-  servings: number;
-  prepTime: number;
-  cookTime: number;
-  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
-  ingredients: { name: string; amount: number; unit: string; notes?: string; staple?: boolean }[];
-  instructions: { step: number; instruction: string; duration?: number; tip?: string }[];
-  safetyNote?: string;
-  zeroWasteNote?: string;
-  inspiredBy: string[];
-}
-
-interface Nutrition {
-  perServing: { calories: number; protein: number; carbs: number; fat: number };
-  servings: number;
-  confidence: 'high' | 'medium' | 'low';
-}
-
-interface Message {
-  id: string;
-  content: string;
+interface ChatEntry {
+  key: string;
   role: 'user' | 'assistant';
+  /** For a reply in flight, the text streamed so far. */
+  content: string;
   timestamp: Date;
-  /** Set when Petra recommended a real recipe from the library. */
-  recipe?: RecipeCardSummary | null;
-  /** Set when Petra wrote the dish herself. No row behind it until it is saved. */
-  generatedRecipe?: GeneratedRecipe | null;
-  /** Macros for the composed dish — shown on the card, sent with the save. */
-  nutrition?: Nutrition | null;
-  /** Kept, not rendered: the model is briefed to state these in its prose. */
-  assumptions?: string[];
-  compromises?: string[];
-  /** Set once the first tap persisted the draft, so a second tap cannot duplicate it. */
+  /** Set once the reply is complete. */
+  reply?: ChatReply;
+  /** The reply broke partway; `content` is what had arrived. */
+  failed?: boolean;
+  /** Set once the first tap persisted the draft, so a second cannot duplicate it. */
   savedRecipeId?: string;
 }
+
+const SUGGESTIONS = ['Something with what I have', 'Under 30 minutes', 'Leftover ideas'];
+
+let localKeys = 0;
+const localKey = (prefix: string) => `${prefix}-${Date.now()}-${localKeys++}`;
+
+const entryFromStored = (message: StoredChatMessage, i: number): ChatEntry => {
+  const role = messageRole(message);
+  return {
+    key: message.id ?? `stored-${i}`,
+    role,
+    content: messageText(message.content),
+    timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+    reply: role === 'assistant' ? replyFromStoredMessage(message) : undefined,
+  };
+};
+
+/** The API's hydrated card, in the shape RecipeCard draws. */
+const summaryFromCard = (card: ChatRecipeCard): RecipeCardSummary => ({
+  id: card.id,
+  title: card.title,
+  imageUrl: card.imageUrl,
+  totalTime: card.totalTime ?? undefined,
+  servings: card.servings ?? undefined,
+  dietaryTags: card.dietaryTags,
+  nutrition: card.nutrition,
+});
 
 /**
  * Shape a composed dish into the card summary.
@@ -76,128 +88,197 @@ interface Message {
  * always present on a generation, while most imported recipes carry no timings
  * at all and `metaLine` correctly omits what it does not know.
  */
-function summaryFromGenerated(message: Message): RecipeCardSummary {
-  const generated = message.generatedRecipe!;
+function summaryFromGenerated(entry: ChatEntry, reply: ChatReply): RecipeCardSummary {
+  const generated = reply.generatedRecipe!;
   return {
     // Never navigated to. The press handler saves first and uses the real id it
     // gets back; a made-up uuid would 404 against a uuid-validated route.
-    id: message.savedRecipeId ?? `draft-${message.id}`,
+    id: entry.savedRecipeId ?? `draft-${entry.key}`,
     title: generated.title,
     // Deliberately null: the saved row carries no image either, so the card's
     // placeholder is the same one the recipe screen will show after the tap.
     imageUrl: null,
     totalTime: generated.prepTime + generated.cookTime,
     servings: generated.servings,
-    nutrition: message.nutrition
+    nutrition: reply.nutrition
       ? {
-          calories: message.nutrition.perServing.calories,
-          protein: message.nutrition.perServing.protein,
+          calories: reply.nutrition.perServing.calories,
+          protein: reply.nutrition.perServing.protein,
         }
       : null,
   };
 }
 
-const SUGGESTIONS = ['Something with what I have', 'Under 30 minutes', 'Leftover ideas'];
+/**
+ * A library recipe the reply recommended.
+ *
+ * Only the whole-reply endpoint hydrates the card; a streamed or reloaded
+ * reply carries the id alone, so the card is read here. A recipe that cannot
+ * be read costs the card, not the conversation.
+ */
+function LibraryRecipe({ recipeId, card }: { recipeId: string; card?: ChatRecipeCard | null }) {
+  const api = useApi();
+  const [summary, setSummary] = useState<RecipeCardSummary | null>(
+    card ? summaryFromCard(card) : null
+  );
+
+  useEffect(() => {
+    if (summary) return;
+    let cancelled = false;
+    api.recipes
+      .getById(recipeId)
+      .then(recipe => {
+        if (cancelled) return;
+        setSummary({
+          id: recipe.id,
+          title: recipe.title,
+          imageUrl: recipe.imageUrl ?? null,
+          totalTime: recipe.totalTime,
+          servings: recipe.servings,
+          dietaryTags: recipe.dietaryTags,
+          nutrition: recipe.nutrition
+            ? { calories: recipe.nutrition.calories, protein: recipe.nutrition.protein }
+            : null,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, recipeId, summary]);
+
+  if (!summary) return null;
+  return (
+    <RecipeCard
+      variant="compact"
+      recipe={summary}
+      showOpenAffordance
+      onPress={() => router.push(`/recipes/${recipeId}`)}
+      style={styles.recipeCard}
+    />
+  );
+}
 
 export default function PetraChatScreen() {
   const { user } = useAuth();
-  const token = useAuthStore(state => state.token);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      content: `Evening${user?.firstName ? `, ${user.firstName}` : ''}. What's in the kitchen tonight, and what should I build around it?`,
-      role: 'assistant',
-      timestamp: new Date(),
-    },
-  ]);
+  const api = useApi();
+  const signedIn = useIsAuthenticated();
+  const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  /** What Petra is doing right now, from the stream's progress frames. */
+  const [progress, setProgress] = useState<string | null>(null);
+  /** A clarifying question's answers, live, before the reply has finished. */
+  const [liveOptions, setLiveOptions] = useState<string[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  /** Which message's composed recipe is mid-save. Per message, not global:
+  /** Which entry's composed recipe is mid-save. Per entry, not global:
    *  a conversation can hold several composed cards. */
-  const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
-  const flatListRef = useRef<FlatList>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const flatListRef = useRef<FlatList<ChatEntry>>(null);
+  const inFlight = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    createSession();
-  }, []);
-
-  const createSession = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_URL}/chat/sessions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Mobile Chat' }),
-      });
-      const data = await res.json();
-      if (data.success) setSessionId(data.data.id);
-    } catch {
-      // Session creation failure is non-fatal — retried with the first message
-    }
+  // Not stored: shown only while the conversation is empty.
+  const greeting: ChatEntry = {
+    key: 'greeting',
+    role: 'assistant',
+    content: `Evening${user?.firstName ? `, ${user.firstName}` : ''}. What's in the kitchen tonight, and what should I build around it?`,
+    timestamp: new Date(),
   };
+
+  /**
+   * Pick up the most recent conversation.
+   *
+   * This used to create a session titled "Mobile Chat" on every mount — one
+   * empty conversation per visit to the tab, and none of them ever reopened.
+   * Now the newest is opened, and a new one is created only by the first
+   * message of a conversation that has none.
+   */
+  useEffect(() => {
+    if (!signedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { sessions } = await api.chat.getSessions({ limit: 1, offset: 0 });
+        const latest = sessions[0];
+        if (!latest || cancelled) return;
+        const session = await api.chat.getSession(latest.id);
+        if (cancelled) return;
+        setSessionId(latest.id);
+        const messages: StoredChatMessage[] = session.messages ?? [];
+        setEntries(messages.map(entryFromStored));
+      } catch {
+        // History is a convenience: without it the screen is a fresh chat.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, signedIn]);
+
+  // Leaving the tab stops the turn rather than streaming into nothing.
+  useEffect(() => () => inFlight.current?.abort(), []);
+
+  const patch = useCallback((key: string, update: Partial<ChatEntry>) => {
+    setEntries(prev => prev.map(e => (e.key === key ? { ...e, ...update } : e)));
+  }, []);
 
   const sendMessage = async (text?: string) => {
     const content = (text ?? inputText).trim();
-    if (!content || isLoading) return;
+    if (!content || isSending) return;
+    if (!signedIn) {
+      Alert.alert('Sign in to chat', 'Your session has expired. Sign in and try again.');
+      return;
+    }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content,
-      role: 'user',
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const userKey = localKey('user');
+    const replyKey = localKey('reply');
+    setEntries(prev => [
+      ...prev,
+      { key: userKey, role: 'user', content, timestamp: new Date() },
+      { key: replyKey, role: 'assistant', content: '', timestamp: new Date() },
+    ]);
     setInputText('');
-    setIsLoading(true);
+    setIsSending(true);
+    setProgress(null);
+    setLiveOptions([]);
 
     try {
-      let activeSessionId = sessionId;
-
-      if (!activeSessionId && token) {
-        const res = await fetch(`${API_URL}/chat/sessions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: content.slice(0, 50) }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          activeSessionId = data.data.id;
-          setSessionId(activeSessionId);
-        }
-      }
-
-      const res = await fetch(`${API_URL}/chat/message`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: activeSessionId, message: content }),
+      // Streamed through `expo/fetch` (the client ApiProvider registers), and
+      // decoded by the same contract decoder the API and the web use.
+      const result = await startChatTurn(api, {
+        sessionId,
+        text: content,
+        signal: controller.signal,
+        onSession: session => setSessionId(session.id),
+        onProgress: label => setProgress(label),
+        onText: streamed => {
+          setProgress(null);
+          patch(replyKey, { content: streamed });
+        },
+        onInterrupt: (_question, options) => setLiveOptions(options),
       });
-
-      const data = await res.json();
-
-      if (data.success) {
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          content:
-            data.data?.content ||
-            'I received your message, but something went wrong with my response.',
-          role: 'assistant',
-          timestamp: new Date(),
-          recipe: data.data?.recipe ?? null,
-          generatedRecipe: data.data?.generatedRecipe ?? null,
-          nutrition: data.data?.nutrition ?? null,
-          assumptions: data.data?.assumptions ?? [],
-          compromises: data.data?.compromises ?? [],
-        };
-        setMessages(prev => [...prev, aiResponse]);
+      setSessionId(result.sessionId);
+      // `done` is authoritative: its text replaces what streamed.
+      patch(replyKey, { content: result.reply.content, reply: result.reply });
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof ChatTurnError) {
+        // The question is stored; keep what arrived and say it was cut off.
+        patch(replyKey, { content: error.partialText, failed: true });
       } else {
-        throw new Error(data.error?.message || 'Failed to get response');
+        // Nothing was stored, so nothing stays — and the text goes back in
+        // the composer rather than being lost.
+        setEntries(prev => prev.filter(e => e.key !== userKey && e.key !== replyKey));
+        setInputText(content);
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to send message. Please try again.');
+      Alert.alert('Error', errorMessage(error, 'Failed to send message. Please try again.'));
     } finally {
-      setIsLoading(false);
+      if (inFlight.current === controller) inFlight.current = null;
+      setIsSending(false);
+      setProgress(null);
+      setLiveOptions([]);
     }
   };
 
@@ -210,63 +291,98 @@ export default function PetraChatScreen() {
    * recipe screen — from there it behaves like any other recipe, cook mode
    * included.
    */
-  const openGeneratedRecipe = async (messageId: string) => {
-    const message = messages.find(m => m.id === messageId);
-    if (!message?.generatedRecipe) return;
+  const openGeneratedRecipe = async (key: string) => {
+    const entry = entries.find(e => e.key === key);
+    if (!entry?.reply?.generatedRecipe) return;
 
     // Already saved: straight through, no second write.
-    if (message.savedRecipeId) {
-      router.push(`/recipes/${message.savedRecipeId}`);
+    if (entry.savedRecipeId) {
+      router.push(`/recipes/${entry.savedRecipeId}`);
       return;
     }
 
     // A save already in flight is what actually prevents a duplicate row — the
     // id it would dedupe against does not exist until the response lands.
-    if (savingMessageId) return;
+    if (savingKey) return;
 
-    if (!token) {
+    if (!signedIn) {
       Alert.alert('Sign in to save recipes', 'Your session has expired. Sign in and try again.');
       return;
     }
 
-    setSavingMessageId(messageId);
-
+    setSavingKey(key);
     try {
-      const res = await fetch(`${API_URL}/recipes/generated`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipe: message.generatedRecipe,
-          // undefined, not null: the field is optional and null fails validation.
-          nutrition: message.nutrition ?? undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error?.message || 'Save failed');
-
-      const savedId = data.data.id;
-      setMessages(prev =>
-        prev.map(m => (m.id === messageId ? { ...m, savedRecipeId: savedId } : m))
-      );
+      const savedId = await saveGeneratedRecipe(api, entry.reply);
+      patch(key, { savedRecipeId: savedId });
       router.push(`/recipes/${savedId}`);
-    } catch (error: any) {
-      // The draft stays on the message, so the card is still tappable and the
+    } catch (error) {
+      // The draft stays on the entry, so the card is still tappable and the
       // user can simply try again.
-      Alert.alert(
-        'Could not save that recipe',
-        error?.message ?? 'Try again in a moment.'
-      );
+      Alert.alert('Could not save that recipe', errorMessage(error, 'Try again in a moment.'));
     } finally {
-      setSavingMessageId(null);
+      setSavingKey(null);
     }
   };
 
   useEffect(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
-  }, [messages, isLoading]);
+  }, [entries, isSending]);
 
-  const canSend = inputText.trim().length > 0 && !isLoading;
+  const shown = entries.length ? entries : [greeting];
+  const last = entries[entries.length - 1];
+  const inFlightKey = isSending ? last?.key : undefined;
+  // A clarifying question's answers first, then the reply's follow-ups, then
+  // the openers for an empty conversation.
+  const chips = liveOptions.length
+    ? liveOptions
+    : !isSending && last?.reply?.suggestions.length
+      ? last.reply.suggestions
+      : entries.length
+        ? []
+        : SUGGESTIONS;
+
+  const canSend = inputText.trim().length > 0 && !isSending;
+
+  const renderEntry = ({ item }: { item: ChatEntry }) => {
+    const reply = item.reply;
+    // The reply in flight shows nothing until its first words; the footer
+    // carries the progress label until then.
+    if (item.key === inFlightKey && !item.content) return null;
+    const notes = [...(reply?.assumptions ?? []), ...(reply?.compromises ?? [])];
+
+    return (
+      <View>
+        <ChatMessage role={item.role} content={item.content} timestamp={item.timestamp} />
+        {item.failed ? (
+          <Text preset="caption" style={styles.note}>
+            This reply was cut off. Ask again to get the rest.
+          </Text>
+        ) : null}
+        {/* What Petra decided for them, and what she could not do. */}
+        {notes.map((line, i) => (
+          <Text key={i} preset="caption" style={styles.note}>
+            {line}
+          </Text>
+        ))}
+        {/* A real library recipe always wins: it has photography, ratings
+            and a row that already exists. A composed dish is the fallback
+            for when nothing in the library fits. */}
+        {reply?.recipeId ? (
+          <LibraryRecipe recipeId={reply.recipeId} card={reply.recipe} />
+        ) : reply?.generatedRecipe ? (
+          <RecipeCard
+            variant="compact"
+            recipe={summaryFromGenerated(item, reply)}
+            badge="Invented for you"
+            showOpenAffordance
+            loading={savingKey === item.key}
+            onPress={() => openGeneratedRecipe(item.key)}
+            style={styles.recipeCard}
+          />
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -285,43 +401,17 @@ export default function PetraChatScreen() {
 
       <FlatList
         ref={flatListRef}
-        data={messages}
-        renderItem={({ item }) => (
-          <View>
-            <ChatMessage message={item} />
-            {/* A real library recipe always wins: it has photography, ratings
-                and a row that already exists. A composed dish is the fallback
-                for when nothing in the library fits. */}
-            {item.recipe ? (
-              <RecipeCard
-                variant="compact"
-                recipe={item.recipe}
-                showOpenAffordance
-                onPress={() => router.push(`/recipes/${item.recipe!.id}`)}
-                style={styles.recipeCard}
-              />
-            ) : item.generatedRecipe ? (
-              <RecipeCard
-                variant="compact"
-                recipe={summaryFromGenerated(item)}
-                badge="Invented for you"
-                showOpenAffordance
-                loading={savingMessageId === item.id}
-                onPress={() => openGeneratedRecipe(item.id)}
-                style={styles.recipeCard}
-              />
-            ) : null}
-          </View>
-        )}
-        keyExtractor={item => item.id}
+        data={shown}
+        renderItem={renderEntry}
+        keyExtractor={item => item.key}
         style={styles.flex}
         contentContainerStyle={styles.messagesContainer}
         showsVerticalScrollIndicator={false}
         ListFooterComponent={
-          isLoading ? (
+          isSending && !last?.content ? (
             <View style={styles.loadingBubble}>
               <LoadingDots />
-              <Text preset="bodyMd">Checking what you have…</Text>
+              <Text preset="bodyMd">{progress ?? 'Checking what you have…'}</Text>
             </View>
           ) : null
         }
@@ -332,16 +422,18 @@ export default function PetraChatScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <View style={styles.inputContainer}>
-          <FlatList
-            horizontal
-            data={SUGGESTIONS}
-            keyExtractor={s => s}
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipsRow}
-            renderItem={({ item }) => (
-              <Chip label={item} onPress={() => sendMessage(item)} style={styles.chip} />
-            )}
-          />
+          {chips.length ? (
+            <FlatList
+              horizontal
+              data={chips}
+              keyExtractor={s => s}
+              showsHorizontalScrollIndicator={false}
+              style={styles.chipsRow}
+              renderItem={({ item }) => (
+                <Chip label={item} onPress={() => sendMessage(item)} style={styles.chip} />
+              )}
+            />
+          ) : null}
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.textInput}
@@ -400,6 +492,7 @@ const styles = StyleSheet.create({
   },
   messagesContainer: { padding: space.md },
   recipeCard: { marginTop: space.xs, marginBottom: space.xs, width: '88%' },
+  note: { maxWidth: '84%', paddingHorizontal: space.xs, marginTop: space.xxs },
   loadingBubble: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -100,6 +100,23 @@ export interface PantrySearchResponse {
   categories: { [key: string]: number }; // category counts
 }
 
+/** One line read off a receipt (`POST /pantry/scan/receipt`), for review before saving. */
+export interface ReceiptItem {
+  name: string;
+  category: string;
+  brand?: string;
+  quantity?: number;
+  unit?: string;
+  /** Estimated days until it turns, from today. */
+  expiresInDays?: number;
+  confidence: number;
+}
+
+export interface ReceiptResult {
+  items: ReceiptItem[];
+  store?: string;
+}
+
 export interface PantryStats {
   totalItems: number;
   itemsByLocation: { [key: string]: number };

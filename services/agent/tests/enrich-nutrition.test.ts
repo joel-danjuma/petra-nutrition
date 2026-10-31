@@ -1,6 +1,7 @@
 import { setFoodDatabase } from '../src/nutrition';
 import { enrichRecipe } from '../src/llm/enrich';
-import type { AIChatService } from '../src/llm/groq';
+import { clearModels, setModel } from '../src/llm/provider';
+import { FakeModel } from './helpers/fake-model';
 import { fixtureFoodDatabase } from './helpers/fixtures';
 
 /**
@@ -39,16 +40,31 @@ const modelReply = (calories: number) =>
     stepTips: [],
   });
 
-const fakeAi = (reply: string) =>
-  ({ sendMessage: async () => ({ content: reply, type: 'text' }) }) as unknown as AIChatService;
+/**
+ * Script the enrich model through the same seam production resolves it by, so
+ * the test exercises `modelFor('enrich')` rather than a hand-built stand-in.
+ */
+const scriptEnrich = (reply: string): FakeModel => {
+  const model = new FakeModel('enrich', reply);
+  setModel('enrich', model);
+  return model;
+};
 
 describe('enrichment nutrition', () => {
-  afterEach(() => setFoodDatabase(null));
+  afterEach(() => {
+    setFoodDatabase(null);
+    clearModels();
+  });
 
   it('uses computed figures rather than the model estimate', async () => {
     setFoodDatabase(fixtureFoodDatabase);
+    const model = scriptEnrich(modelReply(410));
 
-    const result = await enrichRecipe(fakeAi(modelReply(410)), recipe);
+    const result = await enrichRecipe(recipe);
+
+    // The extraction prompt and the recipe both reached the model.
+    expect(model.promptText).toMatch(/recipe data extractor/);
+    expect(model.promptText).toMatch(/200 g linguine/);
 
     // The same figure the nutrition node's hand-calculation test asserts.
     expect(result.nutrition.calories).toBe(748);
@@ -61,8 +77,9 @@ describe('enrichment nutrition', () => {
   it('keeps the model estimate when the ingredients cannot be resolved', async () => {
     // A confident-looking zero is much worse than a rough estimate.
     setFoodDatabase({ lookup: async () => null });
+    scriptEnrich(modelReply(410));
 
-    const result = await enrichRecipe(fakeAi(modelReply(410)), recipe);
+    const result = await enrichRecipe(recipe);
 
     expect(result.nutrition.calories).toBe(410);
   });
@@ -73,8 +90,9 @@ describe('enrichment nutrition', () => {
         throw new Error('FoodData Central is unreachable');
       },
     });
+    scriptEnrich(modelReply(410));
 
-    const result = await enrichRecipe(fakeAi(modelReply(410)), recipe);
+    const result = await enrichRecipe(recipe);
 
     expect(result.nutrition.calories).toBe(410);
     expect(result.difficulty).toBe('EASY');

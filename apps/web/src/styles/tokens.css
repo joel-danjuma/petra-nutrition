@@ -38,6 +38,10 @@
   --color-primary: var(--petra-ink);
   --color-primary-active: var(--petra-primary-active);
   --color-on-primary: var(--petra-white);
+  --color-on-dark: var(--petra-white);
+  --text-ink: var(--petra-ink);
+  --text-body: var(--petra-body);
+  --text-muted: var(--petra-muted);
   --color-link: var(--petra-link);
   --color-link-active: var(--petra-link-active);
   --color-success: var(--petra-success);
@@ -52,6 +56,17 @@
   --signature-coral: var(--petra-coral);
   --signature-forest: var(--petra-forest);
   --signature-cream: var(--petra-cream);
+
+  /* ---- app semantic roles (tokens/app-semantic.css) ---- */
+  --app-warning-surface: #f5e9d4;
+  --app-warning-ink: #181d26;
+  --app-danger: #aa2d00;
+  --app-on-danger: #ffffff;
+  --app-success-surface: #0a2e0e;
+  --app-on-success: #ffffff;
+  --app-on-dark-muted: rgba(255, 255, 255, 0.62);
+  --app-on-dark-surface: rgba(255, 255, 255, 0.06);
+  --app-on-dark-hairline: rgba(255, 255, 255, 0.14);
 
   /* ---- Tailwind roles (bare HSL triples for hsl(var(--x))) ---- */
   --background: 0 0% 100%;
@@ -91,6 +106,27 @@
   --container-pad: 48px;
   --nav-height: 64px;
   --rail-width: 240px;
+  --header-height: 68px;
+  --tab-bar-height: 64px;
+  --app-max: 1080px;
+  --reading-max: 720px;
+
+  /* ---- fluid scale (web only; one 900px breakpoint, the rest is clamp) ---- */
+  --fluid-text-hero: clamp(34px, 5.2vw, 56px);
+  --fluid-text-display: clamp(34px, 5vw, 52px);
+  --fluid-text-section: clamp(26px, 3.4vw, 36px);
+  --fluid-text-card: clamp(22px, 2.6vw, 28px);
+  --fluid-text-lede: clamp(16px, 1.6vw, 19px);
+  --fluid-text-cook: clamp(26px, 3.6vw, 38px);
+  --fluid-text-cook-num: clamp(64px, 9vw, 112px);
+  --fluid-gutter: clamp(20px, 4vw, 48px);
+  --fluid-gutter-app: clamp(16px, 3.5vw, 40px);
+  --fluid-band: clamp(56px, 8vw, 96px);
+  --fluid-hero-top: clamp(40px, 7vw, 88px);
+  --fluid-card-pad: clamp(20px, 3vw, 28px);
+  --fluid-card-pad-lg: clamp(28px, 4.5vw, 48px);
+  --fluid-gap: clamp(20px, 3vw, 32px);
+  --fluid-gap-lg: clamp(28px, 5vw, 64px);
 
   /* ---- radius (pill is pricing-only) ---- */
   --radius-xs: 2px;
@@ -109,11 +145,16 @@
   --text-title-lg: 24px;
   --text-title-md: 20px;
   --text-title-sm: 18px;
+  --text-lead: 17px;
   --text-label-md: 16px;
   --text-button: 16px;
+  --text-body-lg: 15px;
   --text-body-md: 14px;
   --text-caption: 14px;
+  --text-label-sm: 13px;
   --text-legal: 13.12px;
+  --text-eyebrow: 12px;
+  --text-micro: 11px;
   --text-pricing-display: 44.8px;
   --text-pricing-section: 28px;
   --text-pricing-card-title: 20px;

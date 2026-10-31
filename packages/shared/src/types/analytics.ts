@@ -26,6 +26,20 @@ export const WasteSummarySchema = z.object({
   itemsSaved: z.number(),
   weakSpotCategory: z.string().nullable(),
   sinceDate: z.string(),
+  /** This calendar month — the "less waste" report on Today and in the app. */
+  month: z
+    .object({
+      /** e.g. "March" */
+      label: z.string(),
+      cookedInTimeKg: z.number(),
+      wastedKg: z.number(),
+      /** 0–100; null until anything with a known weight has been logged. */
+      percentEaten: z.number().nullable(),
+      recipesCooked: z.number(),
+      /** An item thrown away 2+ times in the last 30 days. */
+      overBought: z.object({ itemName: z.string(), times: z.number() }).nullable(),
+    })
+    .optional(),
 });
 
 export const TodayNutritionSchema = z.object({

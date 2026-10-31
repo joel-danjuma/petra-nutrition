@@ -1,18 +1,15 @@
 import { Router, type Application, type Request, type Response } from 'express';
 import {
-  analyzeNutritionRequestSchema,
   chatRequestSchema,
-  cookingTipsRequestSchema,
   enrichRecipeRequestSchema,
-  generateMealPlanRequestSchema,
-  generateRecipeRequestSchema,
   indexRebuildRequestSchema,
   retrieveRequestSchema,
   visionRequestSchema,
+  receiptRequestSchema,
 } from '@petra/agent-contract';
 import { ValidationError, asyncHandler } from '@petra/service-kit';
 
-import { aiChatService, runChatTurn } from '../orchestrator';
+import { runChatTurn } from '../orchestrator';
 import { enrichRecipe } from '../llm/enrich';
 import { retrievalService } from '../retrieval';
 import { embedRecipesByIds } from '../retrieval/store';
@@ -79,17 +76,6 @@ export const setupRoutes = (app: Application): void => {
     })
   );
 
-  router.post(
-    '/recipes/generate',
-    asyncHandler(async (req: Request, res: Response) => {
-      const { ingredients, preferences } = parse<
-        import('@petra/agent-contract').GenerateRecipeRequest
-      >(generateRecipeRequestSchema, req.body);
-      const response = await aiChatService.generateRecipe(ingredients, preferences);
-      res.json({ success: true, data: response });
-    })
-  );
-
   /**
    * Structured extraction over an imported recipe. Returns fields; writes
    * nothing. The API owns the `recipes` table and persists the result itself.
@@ -101,48 +87,18 @@ export const setupRoutes = (app: Application): void => {
         enrichRecipeRequestSchema,
         req.body
       );
-      res.json({ success: true, data: await enrichRecipe(aiChatService, recipe) });
+      res.json({ success: true, data: await enrichRecipe(recipe) });
     })
   );
 
   router.post(
-    '/meal-plans/generate',
+    '/vision/receipt',
     asyncHandler(async (req: Request, res: Response) => {
-      const { days, preferences, context } = parse<
-        import('@petra/agent-contract').GenerateMealPlanRequest
-      >(generateMealPlanRequestSchema, req.body);
-
-      const response = await aiChatService.generateMealPlan(days, preferences, {
-        userPreferences: context?.userPreferences,
-        currentPantryItems: context?.currentPantryItems ?? [],
-        dietaryRestrictions: context?.dietaryRestrictions ?? [],
-        healthGoals: context?.healthGoals ?? [],
-        allergies: context?.allergies ?? [],
-      });
-
-      res.json({ success: true, data: response });
-    })
-  );
-
-  router.post(
-    '/cooking-tips',
-    asyncHandler(async (req: Request, res: Response) => {
-      const { topic } = parse<import('@petra/agent-contract').CookingTipsRequest>(
-        cookingTipsRequestSchema,
+      const { image } = parse<import('@petra/agent-contract').ReceiptRequest>(
+        receiptRequestSchema,
         req.body
       );
-      res.json({ success: true, data: await aiChatService.getCookingTips(topic) });
-    })
-  );
-
-  router.post(
-    '/nutrition/analyze',
-    asyncHandler(async (req: Request, res: Response) => {
-      const { foodItems } = parse<import('@petra/agent-contract').AnalyzeNutritionRequest>(
-        analyzeNutritionRequestSchema,
-        req.body
-      );
-      res.json({ success: true, data: await aiChatService.analyzeNutrition(foodItems) });
+      res.json({ success: true, data: await visionService.readReceipt(image) });
     })
   );
 

@@ -37,11 +37,16 @@ const buttonVariants = cva(
         // Legal / cookie surfaces: the one place 600 weight is allowed.
         legal: 'rounded-xs bg-[var(--color-link)] text-white text-legal font-legal active:bg-[var(--color-link-active)]',
       },
+      // Heights, not padding, so a row of mixed buttons lines up and every
+      // target clears 44px. `lg` is the 52px hero / full-width CTA.
       size: {
-        default: 'px-lg py-md',
-        sm: 'px-md py-sm text-body-md',
-        lg: 'px-lg py-md',
-        icon: 'h-10 w-10 rounded-pill p-0',
+        default: 'min-h-target px-5',
+        sm: 'min-h-10 px-md text-body-md',
+        lg: 'min-h-cta px-lg',
+        // Square 44px control with the card radius (menu, close, composer).
+        icon: 'h-11 w-11 shrink-0 p-0',
+        // The DS's circular 40px icon button (carousel, share, back).
+        'icon-round': 'h-10 w-10 shrink-0 rounded-full p-0',
       },
       fullWidth: {
         true: 'w-full',

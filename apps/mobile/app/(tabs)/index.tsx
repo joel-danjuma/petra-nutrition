@@ -3,7 +3,7 @@ import { View, ScrollView, Pressable, StyleSheet, RefreshControl } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuth, useAuthStore, usePantry } from '@petra/shared';
+import { useApi, useAuth, useIsAuthenticated, usePantry } from '@petra/shared';
 
 import { color, radius, space } from '../../src/theme';
 import { Button } from '../../src/components/ui/Button';
@@ -13,7 +13,6 @@ import { ProgressRow } from '../../src/components/ui/ProgressRow';
 import { SectionHeader } from '../../src/components/ui/SectionHeader';
 import { Text } from '../../src/components/ui/Text';
 import { RecipeCard } from '../../src/components/RecipeCard';
-import { API_URL } from '../../src/config/api';
 
 interface PlannedRecipe {
   id: string;
@@ -67,7 +66,8 @@ function nutritionSummary(n: TodayNutrition, tonight?: PlannedRecipe): string {
 
 export default function TodayScreen() {
   const { user } = useAuth();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
+  const signedIn = useIsAuthenticated();
   const { items: pantryItems, fetchItems } = usePantry();
 
   const [tonight, setTonight] = useState<PlannedMeal | null>(null);
@@ -77,54 +77,49 @@ export default function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    if (!token) return;
-    const headers = { Authorization: `Bearer ${token}` };
+    if (!signedIn) return;
 
     fetchItems().catch(() => {});
 
     try {
-      const res = await fetch(`${API_URL}/meal-plans?limit=1`, { headers });
-      const data = await res.json();
-      if (data.success) {
-        const plan = data.data?.mealPlans?.[0];
-        const meals: any[] = plan?.meals ?? [];
-        const todayStr = new Date().toISOString().split('T')[0];
+      const data = await api.client.get<{ mealPlans?: { meals?: any[] }[] }>(
+        '/meal-plans',
+        { params: { limit: 1 } }
+      );
+      const plan = data.mealPlans?.[0];
+      const meals: any[] = plan?.meals ?? [];
+      const todayStr = new Date().toISOString().split('T')[0];
 
-        const dinner = meals.find(
-          m => m.mealType === 'DINNER' && String(m.date).split('T')[0] === todayStr
-        );
-        setTonight(dinner?.recipe ? { recipe: dinner.recipe, tag: dinner.tag } : null);
+      const dinner = meals.find(
+        m => m.mealType === 'DINNER' && String(m.date).split('T')[0] === todayStr
+      );
+      setTonight(dinner?.recipe ? { recipe: dinner.recipe, tag: dinner.tag } : null);
 
-        // The Remix tile: the next meal the planner has marked as living off
-        // something already cooked. Falls back to nothing rather than inventing
-        // a leftovers idea the plan doesn't actually contain.
-        const leftovers = meals
-          .filter(m => m.recipe && /leftover/i.test(m.tag ?? ''))
-          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-          .find(m => String(m.date).split('T')[0] >= todayStr);
-        setRemix(leftovers ? { recipe: leftovers.recipe, tag: leftovers.tag } : null);
-      }
+      // The Remix tile: the next meal the planner has marked as living off
+      // something already cooked. Falls back to nothing rather than inventing
+      // a leftovers idea the plan doesn't actually contain.
+      const leftovers = meals
+        .filter(m => m.recipe && /leftover/i.test(m.tag ?? ''))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+        .find(m => String(m.date).split('T')[0] >= todayStr);
+      setRemix(leftovers ? { recipe: leftovers.recipe, tag: leftovers.tag } : null);
     } catch {
       setTonight(null);
       setRemix(null);
     }
 
     try {
-      const res = await fetch(`${API_URL}/analytics/waste-summary`, { headers });
-      const data = await res.json();
-      if (data.success) setWaste(data.data);
+      setWaste(await api.analytics.getWasteSummary());
     } catch {
       // non-fatal
     }
 
     try {
-      const res = await fetch(`${API_URL}/analytics/today-nutrition`, { headers });
-      const data = await res.json();
-      if (data.success) setNutrition(data.data);
+      setNutrition(await api.analytics.getTodayNutrition());
     } catch {
       // non-fatal
     }
-  }, [token]);
+  }, [api, signedIn]);
 
   useEffect(() => {
     load();

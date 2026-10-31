@@ -3,7 +3,7 @@ import type { GeneratedRecipe } from '@petra/agent-contract';
 import { parseJson } from '../../llm/enrich';
 import { modelFor } from '../../llm/provider';
 import { logger } from '../../utils/logger';
-import { STAPLES, type Constraints } from '../constraints';
+import { STAPLES, isStaple, type Constraints } from '../constraints';
 import { constraintsFor, type GraphStateType, type GraphUpdate } from '../state';
 import { emitNode, turnSignal } from '../turn-context';
 import { feedbackFor, validateGeneratedRecipe } from '../validate';
@@ -70,9 +70,9 @@ Write plainly. No exclamation marks.`;
 
 /** The available/excluded block. Built from data, so it cannot drift. */
 export function constraintBlock(constraints: Constraints, servings: number | null): string {
-  const named = constraints.named.filter(
-    n => !STAPLES.some(s => s.toLowerCase() === n.toLowerCase())
-  );
+  // "Extra virgin olive oil" is the staple too; an exact string test said no
+  // and listed it as something the dish had to be built around.
+  const named = constraints.named.filter(n => !isStaple(n));
   const pantry = constraints.pantry.filter(
     p =>
       !named.some(n => n.toLowerCase() === p.toLowerCase()) &&

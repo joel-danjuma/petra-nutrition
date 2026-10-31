@@ -1,17 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import type {
-  AgentContext,
   ChatRequest,
   ChatResponse,
   GraphNode,
 } from '@petra/agent-contract';
 
-import { AIChatService, type RetrievedRecipeContext } from './llm/groq';
 import { RECURSION_LIMIT, chatGraph } from './graph';
 import { lastUserMessage } from './graph/state';
 import { withTurnContext } from './graph/turn-context';
-import { retrievalService } from './retrieval';
 import { logger } from './utils/logger';
 
 /**
@@ -34,69 +31,6 @@ import { logger } from './utils/logger';
  * both messages, and hydrates the recipe card. It hands us context; we hand
  * back prose.
  */
-
-const aiChatService = new AIChatService();
-
-/**
- * Keywords that justify the large model.
- *
- * Retained for `options.advancedModel` and for the single-shot endpoints that
- * still call `AIChatService` directly. Inside the graph, model choice is a
- * per-node decision in `llm/provider.ts` — the compose node gets the large
- * model because composing under constraints is the actual reasoning task, and
- * the router gets the fast one because classification never needed more.
- */
-const ADVANCED_KEYWORDS = [
-  'meal plan',
-  'nutrition',
-  'complex recipe',
-  'detailed analysis',
-  'multiple days',
-  'comprehensive',
-  'elaborate',
-];
-
-export const shouldUseAdvancedModel = (content: string): boolean =>
-  ADVANCED_KEYWORDS.some(keyword => content.toLowerCase().includes(keyword));
-
-/**
- * Run retrieval for this turn and shape the hits for the prompt.
- *
- * Kept because `POST /v1/recipes/retrieve` and the meal-plan path still want
- * exactly this, and because its contract — retrieval failure must never fail
- * the chat — is now a graph-level policy in `nodes/search.ts` rather than a
- * property of one function. An ungrounded reply is worse than a grounded one,
- * but far better than an error.
- */
-export const retrieveForTurn = async (
-  userMessage: string,
-  context: AgentContext | undefined,
-  limit: number
-): Promise<RetrievedRecipeContext[]> => {
-  if (!userMessage) return [];
-
-  try {
-    const hits = await retrievalService.search({
-      query: userMessage,
-      pantry: context?.pantryNames ?? context?.currentPantryItems ?? [],
-      allergies: context?.allergies ?? [],
-      dietaryRestrictions: context?.dietaryRestrictions ?? [],
-      limit,
-    });
-
-    return hits.map(h => ({
-      id: h.id,
-      title: h.title,
-      cuisine: h.cuisine,
-      totalTime: h.totalTime,
-      matched: h.matched,
-      missing: h.missing,
-    }));
-  } catch (error) {
-    logger.warn('Recipe retrieval failed; continuing ungrounded', error);
-    return [];
-  }
-};
 
 /**
  * The graph thread this turn belongs to.
@@ -188,5 +122,3 @@ export const runChatTurnStreaming = async (
     ...(events?.onNode ? { onNode: events.onNode } : {}),
     ...(events?.onInterrupt ? { onInterrupt: events.onInterrupt } : {}),
   });
-
-export { aiChatService };

@@ -1,19 +1,19 @@
 import http from 'http';
 import https from 'https';
+import { Readable } from 'stream';
+import type { ReadableStream as NodeReadableStream } from 'stream/web';
 import {
   AGENT_INTERNAL_KEY_HEADER,
-  type AnalyzeNutritionRequest,
   type ChatRequest,
   type ChatResponse,
-  type CookingTipsRequest,
   type EnrichRecipeRequest,
   type EnrichRecipeResponse,
   type IndexRebuildRequest,
   type IndexRebuildResponse,
-  type GenerateMealPlanRequest,
-  type GenerateRecipeRequest,
   type RetrieveRequest,
   type RetrievedRecipe,
+  type ReceiptRequest,
+  type ReceiptResponse,
   type VisionRequest,
   type VisionResponse,
 } from '@petra/agent-contract';
@@ -153,11 +153,16 @@ class AgentClient {
   }
 
   /**
-   * Open the agent's SSE stream and hand back the raw response so the caller
-   * can pipe it. Deliberately returns the `Response` rather than parsing: the
-   * whole point is to forward bytes without buffering them here.
+   * Open the agent's SSE stream and hand back its body, unparsed, so the
+   * caller can pipe it: the whole point is to forward bytes without buffering
+   * them here.
+   *
+   * Resolves only once the agent has answered 200, and rejects before any
+   * bytes otherwise, which is what lets the chat turn persist the user message
+   * only for a stream that actually started. A Node `Readable` rather than the
+   * fetch body: everything downstream of this is a Node pipeline.
    */
-  async chatStream(request: ChatRequest, signal: AbortSignal): Promise<Response> {
+  async chatStream(request: ChatRequest, signal: AbortSignal): Promise<Readable> {
     const response = await fetch(`${this.baseUrl}/v1/chat/stream`, {
       method: 'POST',
       headers: { ...this.headers(), Accept: 'text/event-stream' },
@@ -171,35 +176,25 @@ class AgentClient {
       throw new UpstreamUnavailableError('assistant');
     }
 
-    return response;
+    // The DOM and Node typings describe the same runtime object differently.
+    return Readable.fromWeb(response.body as unknown as NodeReadableStream);
   }
 
   retrieve(request: RetrieveRequest): Promise<{ recipes: RetrievedRecipe[] }> {
     return this.post('/v1/recipes/retrieve', request, TIMEOUTS.retrieve);
   }
 
-  generateRecipe(request: GenerateRecipeRequest): Promise<ChatResponse> {
-    return this.post('/v1/recipes/generate', request, TIMEOUTS.chat);
-  }
-
   enrichRecipe(request: EnrichRecipeRequest): Promise<EnrichRecipeResponse> {
     return this.post('/v1/recipes/enrich', request, TIMEOUTS.chat);
   }
 
-  generateMealPlan(request: GenerateMealPlanRequest): Promise<ChatResponse> {
-    return this.post('/v1/meal-plans/generate', request, TIMEOUTS.chat);
-  }
-
-  cookingTips(request: CookingTipsRequest): Promise<ChatResponse> {
-    return this.post('/v1/cooking-tips', request, TIMEOUTS.chat);
-  }
-
-  analyzeNutrition(request: AnalyzeNutritionRequest): Promise<ChatResponse> {
-    return this.post('/v1/nutrition/analyze', request, TIMEOUTS.chat);
-  }
-
   recognizeImage(request: VisionRequest): Promise<VisionResponse> {
     return this.post('/v1/vision/pantry-items', request, TIMEOUTS.vision);
+  }
+
+  /** Read a grocery receipt into pantry items, for the user to review. */
+  readReceipt(request: ReceiptRequest): Promise<ReceiptResponse> {
+    return this.post('/v1/vision/receipt', request, TIMEOUTS.vision);
   }
 
   /**

@@ -1,3 +1,5 @@
+import { ingredientTerms, sqlTermPattern } from '@petra/food-measures';
+
 import { Prisma } from '../generated/prisma';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
@@ -40,24 +42,19 @@ export interface Candidate {
  *
  * `\y` is Postgres's word boundary, and it is the whole reason this is a regex
  * rather than a pile of ILIKE patterns: `%nut%` matches "butternut squash",
- * so a nut allergy would quietly remove most of the vegetarian corpus. An
- * optional trailing `s` covers the plural without needing a stemmer in SQL.
+ * so a nut allergy would quietly remove most of the vegetarian corpus.
+ *
+ * Each term is spelled out in its singular and plural forms by
+ * `sqlTermPattern`, the same plural rule the in-memory checks use. The old
+ * optional trailing `s` missed every "-es" and "-ies" plural, so `anchovy`
+ * could never match "anchovies".
  *
  * Returns null when there is nothing to block, so callers can skip the clause
  * entirely rather than testing against a pattern that matches nothing.
  */
 export function blockedPattern(terms: string[]): string | null {
-  const cleaned = [...new Set(terms.map(t => t.trim().toLowerCase()).filter(Boolean))]
-    // Terms come from our own tables and are alphanumeric plus spaces, but
-    // escaping anyway means a future addition cannot become a regex injection.
-    .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-
-  if (!cleaned.length) return null;
-  return `\\y(${cleaned.join('|')})s?\\y`;
+  return sqlTermPattern(terms);
 }
-
-/** The same pattern construction, for the terms we want to *find*. */
-export const matchPattern = blockedPattern;
 
 /**
  * Which recipes this caller may see.
@@ -97,25 +94,46 @@ const safetyClause = (pattern: string | null): Prisma.Sql =>
  * is named after. Ranked by the *fraction* of a recipe's ingredients the user
  * has, not the count, so a five-ingredient dish they can almost make beats a
  * twenty-ingredient one they share four items with.
+ *
+ * An ingredient counts as covered by the `covers` rule: *every* term of some
+ * pantry item's name appears in it. Matching any one term let "Olive oil"
+ * cover "sesame oil" and "Greek yoghurt" cover "greek salad". Staples are not
+ * credited here — this only ranks candidates, and the shortlist's own coverage
+ * is recomputed in TypeScript, where staples are never counted as missing.
  */
 export async function pantryCandidates(
-  pantryTerms: string[],
+  pantry: string[],
   blocked: string | null,
   ownerId?: string
 ): Promise<Candidate[]> {
-  const pattern = matchPattern(pantryTerms);
-  if (!pattern) return [];
+  const items = pantry.map(ingredientTerms).filter(terms => terms.length);
+  if (!items.length) return [];
+
+  // (all of item 1's terms) OR (all of item 2's terms) OR …
+  const covered = Prisma.join(
+    items.map(terms =>
+      Prisma.join(
+        terms.map(term => Prisma.sql`i.name ~* ${sqlTermPattern([term])}`),
+        ' AND ',
+        '(',
+        ')'
+      )
+    ),
+    ' OR ',
+    '(',
+    ')'
+  );
 
   const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT r.id,
-           count(DISTINCT i.name) FILTER (WHERE i.name ~* ${pattern})::float
+           count(DISTINCT i.name) FILTER (WHERE ${covered})::float
              / NULLIF(count(DISTINCT i.name), 0) AS coverage
     FROM recipes r
     JOIN recipe_ingredients i ON i."recipeId" = r.id
     WHERE ${visibilityClause(ownerId)}
       ${safetyClause(blocked)}
     GROUP BY r.id
-    HAVING count(DISTINCT i.name) FILTER (WHERE i.name ~* ${pattern}) > 0
+    HAVING count(DISTINCT i.name) FILTER (WHERE ${covered}) > 0
     ORDER BY coverage DESC, r.rating DESC NULLS LAST
     LIMIT ${CANDIDATES}
   `);

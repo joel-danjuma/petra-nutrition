@@ -1,5 +1,49 @@
 import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+/**
+ * tailwind-merge only knows Tailwind's stock font sizes, so it reads the
+ * design system's (`text-label-md`, `text-eyebrow`, …) as text *colours* and
+ * drops whichever comes first: `cn('text-label-md', 'text-foreground')` used to
+ * return just `text-foreground`. These must match `fontSize` in
+ * tailwind.config.js.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-family': [{ font: ['pricing'] }],
+      'font-weight': [{ font: ['regular', 'legal', 'mid', 'mid-strong'] }],
+      'font-size': [
+        {
+          text: [
+            'display-xl',
+            'display-lg',
+            'display-md',
+            'title-lg',
+            'title-md',
+            'title-sm',
+            'label-md',
+            'body-md',
+            'caption',
+            'legal',
+            'lead',
+            'body-lg',
+            'label-sm',
+            'eyebrow',
+            'micro',
+            'hero',
+            'display',
+            'section',
+            'card-title',
+            'lede',
+            'cook',
+            'cook-num',
+          ],
+        },
+      ],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -42,13 +86,13 @@ export function formatCurrency(amount: number, currency = 'USD'): string {
   }).format(amount);
 }
 
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
+export function debounce<A extends unknown[]>(
+  func: (...args: A) => unknown,
   wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null;
+): (...args: A) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   
-  return (...args: Parameters<T>) => {
+  return (...args: A) => {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };

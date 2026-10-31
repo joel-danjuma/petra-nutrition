@@ -24,7 +24,7 @@ import { fixtureFoodDatabase } from './helpers/fixtures';
  * not that a particular recipe comes back.
  */
 
-const hasKey = !!process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'test-key';
+const hasKey = !!process.env.GROQ_API_KEY;
 const describeLive = hasKey ? describe : describe.skip;
 
 describeLive('composing against the real models', () => {

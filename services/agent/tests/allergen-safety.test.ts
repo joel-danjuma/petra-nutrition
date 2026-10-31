@@ -2,13 +2,14 @@ import { MemorySaver } from '@langchain/langgraph';
 
 import { resetGraph } from '../src/graph';
 import { setCheckpointer } from '../src/graph/checkpointer';
-import { deriveConstraints } from '../src/graph/constraints';
+import { deriveConstraints, isBlocked } from '../src/graph/constraints';
 import { validateGeneratedRecipe } from '../src/graph/validate';
 import { clearModels, setModel } from '../src/llm/provider';
 import { setFoodDatabase } from '../src/nutrition';
 import { runChatTurn } from '../src/orchestrator';
-import { expandAllergen } from '../src/retrieval/terms';
+import { ALLERGEN_TERMS, expandAllergen, normalise } from '../src/retrieval/terms';
 import { retrievalService } from '../src/retrieval';
+import { blockedPattern } from '../src/retrieval/sql';
 import { FakeModel, routerReply } from './helpers/fake-model';
 import { fixtureFoodDatabase } from './helpers/fixtures';
 
@@ -44,6 +45,37 @@ describe('the blocked set', () => {
 
     for (const term of ['butter', 'cheese', 'cream', 'parmesan', 'yoghurt']) {
       expect(constraints.blockedTokens.has(term)).toBe(true);
+    }
+  });
+
+  it('blocks the plural of every term, in memory and in SQL', () => {
+    // `anchovy` used to need a misspelt `anchovie` beside it, because the old
+    // normaliser turned "anchovies" into "anchovi" and the SQL pattern's `s?`
+    // only knew one kind of plural. One plural rule now serves both.
+    const constraints = deriveConstraints(withAllergy(['fish']), []);
+    const sql = new RegExp(
+      (blockedPattern(expandAllergen('fish')) as string).replace(/\\y/g, '\\b'),
+      'i'
+    );
+
+    for (const name of ['Anchovies', 'anchovy fillets', 'Sardines', 'tinned tuna']) {
+      expect(isBlocked(name, constraints.blockedTokens)).toBe(true);
+      expect(sql.test(name)).toBe(true);
+    }
+    expect(isBlocked('Peaches', constraints.blockedTokens)).toBe(false);
+  });
+
+  it('keeps every single-word term blocked through the normaliser', () => {
+    // If the plural rule, a synonym or the preparation words ever turned an
+    // allergen term into something outside its own list, the in-memory check
+    // would silently stop matching it. ("yogurt" folds to "yoghurt", which is
+    // why both are listed.)
+    for (const list of Object.values(ALLERGEN_TERMS)) {
+      for (const term of list.filter(t => !t.includes(' '))) {
+        const tokens = normalise(term);
+        expect(tokens).toHaveLength(1);
+        expect(list).toContain(tokens[0]);
+      }
     }
   });
 

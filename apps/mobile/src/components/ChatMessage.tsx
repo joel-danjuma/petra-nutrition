@@ -1,43 +1,38 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { enumEquals } from '@petra/shared';
 
 import { color, onDark, radius, space } from '../theme';
 import { Text } from './ui/Text';
 
-interface Message {
-  id: string;
-  content: string;
-  role: 'user' | 'assistant' | 'USER' | 'ASSISTANT';
-  timestamp: Date;
-}
-
 interface ChatMessageProps {
-  message: Message;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
 }
 
 /**
  * Chat bubbles. The user's turn is the near-black ink surface (it is the
  * emphasised one), Petra's is the soft surface with a hairline. Both take the
  * content-card radius rather than a rounded chat pill.
+ *
+ * Takes the three fields it draws rather than a message type of its own: the
+ * screen's entries carry a whole `ChatReply`, and this only needs the text.
  */
-export function ChatMessage({ message }: ChatMessageProps) {
-  // Case-insensitive: locally built messages use 'user', but history loaded
-  // from the API comes back as 'USER'.
-  const isUser = enumEquals(message.role, 'user');
+export function ChatMessage({ role, content, timestamp }: ChatMessageProps) {
+  const isUser = role === 'user';
 
   return (
     <View style={[styles.container, isUser ? styles.alignEnd : styles.alignStart]}>
       <View style={[styles.bubble, isUser ? styles.user : styles.assistant]}>
         <Text preset="bodyMd" color={isUser ? color.white : color.ink}>
-          {message.content}
+          {content}
         </Text>
         <Text
           preset="caption"
           color={isUser ? onDark.textMuted : color.muted}
           style={styles.timestamp}
         >
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
     </View>

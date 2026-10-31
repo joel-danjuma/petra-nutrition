@@ -1,6 +1,7 @@
+import { covers } from '@petra/food-measures';
+
 import { retrievalService, type RetrievedRecipe } from '../../retrieval';
 import { overflowSeeds } from '../../retrieval/overflow';
-import { normalise } from '../../retrieval/terms';
 import { logger } from '../../utils/logger';
 import { emitNode } from '../turn-context';
 import type { GraphStateType, GraphUpdate } from '../state';
@@ -8,11 +9,11 @@ import type { GraphStateType, GraphUpdate } from '../state';
 /**
  * Grounded recommendation over the recipe corpus.
  *
- * Behaviourally unchanged from `retrieveForTurn` — same `RetrievalService`,
- * same signals, same never-fail-the-chat posture — with one addition that is
- * the whole reason it is a node rather than a function call: it decides whether
- * what it found actually answers the question, and that decision is an edge in
- * the graph.
+ * Behaviourally unchanged from the pre-graph retrieval step — same
+ * `RetrievalService`, same signals, same never-fail-the-chat posture — with
+ * one addition that is the whole reason it is a node rather than a function
+ * call: it decides whether what it found actually answers the question, and
+ * that decision is an edge in the graph.
  *
  * When the answer is no, the turn continues to `compose_recipe` with these
  * hits as a seed rather than stopping at "here is the nearest thing I have".
@@ -28,20 +29,16 @@ import type { GraphStateType, GraphUpdate } from '../state';
  * dish they want, and a recipe using two of the three is a different dish. The
  * cost of being wrong in this direction is composing something when a library
  * recipe would have done; the cost of the other direction is the failing case.
+ *
+ * "Uses" is the pantry rule, `covers`: every word of the named ingredient must
+ * appear in one of the recipe's ingredients or its title. Sharing one word is
+ * not enough — "bell peppers" is not the black pepper a recipe seasons with.
  */
 function coversNamed(recipe: RetrievedRecipe, named: string[]): boolean {
   if (!named.length) return true;
 
-  const haystack = new Set<string>([
-    ...recipe.matched.flatMap(normalise),
-    ...recipe.missing.flatMap(normalise),
-    ...normalise(recipe.title),
-  ]);
-
-  return named.every(name => {
-    const tokens = normalise(name);
-    return tokens.length > 0 && tokens.some(t => haystack.has(t));
-  });
+  const haystack = [...recipe.matched, ...recipe.missing, recipe.title];
+  return named.every(name => haystack.some(n => covers(name, n)));
 }
 
 /**

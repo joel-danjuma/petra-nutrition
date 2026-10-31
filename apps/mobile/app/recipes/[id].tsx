@@ -3,7 +3,14 @@ import { View, ScrollView, Image, Pressable, StyleSheet, Alert } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, ChevronLeft, Heart, Plus, UtensilsCrossed } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useAuthStore, usePantry } from '@petra/shared';
+import {
+  ApiError,
+  covers,
+  errorMessage,
+  isStaple,
+  useApi,
+  usePantry,
+} from '@petra/shared';
 
 import { color, radius, semantic, space } from '../../src/theme';
 import { Button } from '../../src/components/ui/Button';
@@ -12,9 +19,7 @@ import { Chip } from '../../src/components/ui/Chip';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { Text } from '../../src/components/ui/Text';
 import { Callout } from '../../src/components/ui/Callout';
-import { errorMessage } from '../../src/api/errors';
 import { addItemsToActiveList } from '../../src/api/shopping';
-import { API_URL } from '../../src/config/api';
 
 interface RecipeIngredient {
   id: string;
@@ -50,11 +55,18 @@ interface RecipeDetail {
   zeroWasteNote?: string | null;
   isAIGenerated?: boolean;
   isFavorited?: boolean;
+  /** Which ingredients the kitchen has, worked out by the API. Signed in only. */
+  pantryMatch?: {
+    ingredients: Array<{
+      ingredientId: string;
+      status: 'have' | 'use-soon' | 'missing';
+    }>;
+  };
 }
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
   const { items: pantryItems, fetchItems } = usePantry();
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -72,13 +84,13 @@ export default function RecipeDetailScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/recipes/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (!cancelled && data.success) setRecipe(data.data);
-      } catch {
-        if (!cancelled) Alert.alert('Error', 'Failed to load recipe.');
+        const data = await api.client.get<RecipeDetail>(`/recipes/${id}`);
+        if (!cancelled) setRecipe(data);
+      } catch (error) {
+        // A 404 already has its own screen below; only a failure that is not
+        // an answer needs the alert.
+        const notFound = error instanceof ApiError && error.status === 404;
+        if (!cancelled && !notFound) Alert.alert('Error', 'Failed to load recipe.');
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -86,25 +98,34 @@ export default function RecipeDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, token]);
+  }, [id, api]);
 
-  // Short names are dropped deliberately: an empty or one-letter pantry name
-  // matches every ingredient through `includes`, which would report a full
-  // pantry and hide the add button entirely.
-  const pantryNames = useMemo(
-    () => pantryItems.map(p => p.name.toLowerCase().trim()).filter(n => n.length >= 3),
-    [pantryItems]
+  /** The server's verdict per ingredient, when it sent one (signed in). */
+  const serverStatus = useMemo(
+    () => new Map(recipe?.pantryMatch?.ingredients.map(row => [row.ingredientId, row.status])),
+    [recipe]
   );
 
-  const inPantry = (name: string) => {
-    const needle = name.toLowerCase().trim();
-    if (needle.length < 3) return false;
-    return pantryNames.some(n => n.includes(needle) || needle.includes(n));
+  /**
+   * Whether the kitchen already has an ingredient.
+   *
+   * The server's `pantryMatch` when it is there, so this screen and the web
+   * agree row for row. Otherwise the shared `covers` rule — the one the server
+   * uses — over the local pantry. It replaces a two-way substring test that
+   * read garlic powder in the pantry as fresh garlic, and "oil" as covering
+   * "boil-in-the-bag rice". Staples (salt, pepper, oil) count as had: nobody
+   * shops for salt because a recipe mentioned it.
+   */
+  const inPantry = (ing: Pick<RecipeIngredient, 'id' | 'name'>) => {
+    const status = serverStatus.get(ing.id);
+    if (status) return status !== 'missing';
+    if (isStaple(ing.name)) return true;
+    return pantryItems.some(item => covers(item.name, ing.name));
   };
 
   const haveCount = useMemo(
-    () => (recipe ? recipe.ingredients.filter(ing => inPantry(ing.name)).length : 0),
-    [recipe, pantryNames]
+    () => (recipe ? recipe.ingredients.filter(ing => inPantry(ing)).length : 0),
+    [recipe, pantryItems, serverStatus]
   );
 
   /**
@@ -154,11 +175,8 @@ export default function RecipeDetailScreen() {
   const toggleFavorite = async () => {
     if (!recipe) return;
     try {
-      const method = recipe.isFavorited ? 'DELETE' : 'POST';
-      await fetch(`${API_URL}/recipes/${recipe.id}/favorite`, {
-        method,
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (recipe.isFavorited) await api.recipes.unfavorite(recipe.id);
+      else await api.recipes.favorite(recipe.id);
       setRecipe(prev => (prev ? { ...prev, isFavorited: !prev.isFavorited } : prev));
     } catch {
       Alert.alert('Error', 'Failed to update favorite.');
@@ -276,7 +294,7 @@ export default function RecipeDetailScreen() {
             </View>
             <Card padded={false}>
               {recipe.ingredients.map((ing, i) => {
-                const have = inPantry(ing.name);
+                const have = inPantry(ing);
                 const listed = addedNames.includes(ing.name.toLowerCase());
                 const row = (
                   <>
@@ -334,7 +352,7 @@ export default function RecipeDetailScreen() {
             {missingCount > 0 && (
               <Button
                 variant="secondary"
-                onPress={() => addMissing(recipe.ingredients.filter(ing => !inPantry(ing.name)))}
+                onPress={() => addMissing(recipe.ingredients.filter(ing => !inPantry(ing)))}
                 loading={isAdding}
                 fullWidth
               >

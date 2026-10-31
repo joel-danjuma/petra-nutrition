@@ -1,11 +1,11 @@
 /**
  * The shapes the chat path passes around.
  *
- * Split out of `groq.ts` so that the prompt builder, the response parser and
- * the graph's respond node can share them without any of those three depending
- * on a provider client. `ChatResponse` here is the agent's internal shape; the
- * wire shape is `chatResponseSchema` in @petra/agent-contract, and the two are
- * kept aligned by the route handlers parsing against the contract.
+ * Kept in their own module so that the prompt builder, the response parser,
+ * the provider seam and the graph's nodes can share them without any of them
+ * depending on a provider client. `ChatResponse` here is the agent's internal
+ * shape; the wire shape is `chatResponseSchema` in @petra/agent-contract, and
+ * the two are kept aligned by the route handlers parsing against the contract.
  */
 
 import type { GeneratedRecipe, NutritionBreakdown } from '@petra/agent-contract';
@@ -50,8 +50,8 @@ export interface ChatResponse {
   model?: string;
   tokensUsed?: number;
 
-  /* --- the graph's additions. Optional here so the single-shot endpoints that
-     never touch the graph stay unchanged. ---------------------------------- */
+  /* --- the graph's additions. Optional because a plain conversational reply
+     carries none of them. ------------------------------------------------- */
 
   /** A dish the agent composed rather than found. No `recipeId` to open. */
   generatedRecipe?: GeneratedRecipe;

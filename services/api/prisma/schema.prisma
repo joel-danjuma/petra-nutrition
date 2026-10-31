@@ -357,6 +357,10 @@ model ShoppingList {
   tags           String[]  @default([])
   isCompleted    Boolean   @default(false)
   completedAt    DateTime?
+  /// Ingredients left off when generated, because the pantry already covered
+  /// them: [{ name, have: "3 tins", location }]. Shown as "Skipped — already
+  /// in your kitchen". Null for lists made by hand or before this existed.
+  skippedItems   Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

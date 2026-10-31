@@ -3,7 +3,7 @@ import { View, Pressable, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogOut } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { useAuth, useAuthStore } from '@petra/shared';
+import { useApi, useAuth } from '@petra/shared';
 
 import { color, radius, semantic, space } from '../../src/theme';
 import { Button } from '../../src/components/ui/Button';
@@ -14,7 +14,6 @@ import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { SectionHeader } from '../../src/components/ui/SectionHeader';
 import { Text } from '../../src/components/ui/Text';
 import { Callout } from '../../src/components/ui/Callout';
-import { API_URL } from '../../src/config/api';
 
 const DIET_OPTIONS = [
   'Vegetarian',
@@ -49,7 +48,7 @@ interface WasteSummary {
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
 
   const [profile, setProfile] = useState<Profile>({});
   const [waste, setWaste] = useState<WasteSummary | null>(null);
@@ -58,27 +57,21 @@ export default function ProfileScreen() {
 
   const load = useCallback(async () => {
     setIsLoading(true);
-    const headers = { Authorization: `Bearer ${token}` };
     try {
-      const [profileRes, subRes, wasteRes] = await Promise.all([
-        fetch(`${API_URL}/users/profile`, { headers }),
-        fetch(`${API_URL}/subscription/status`, { headers }),
-        fetch(`${API_URL}/analytics/waste-summary`, { headers }),
+      // Settled, not all: each panel stands on its own, so one refusal (the
+      // waste summary, say) must not blank the other two.
+      const [profileRes, subRes, wasteRes] = await Promise.allSettled([
+        api.client.get<{ profile?: Profile | null }>('/users/profile'),
+        api.subscription.getStatus(),
+        api.analytics.getWasteSummary(),
       ]);
-      const [profileData, subData, wasteData] = await Promise.all([
-        profileRes.json(),
-        subRes.json(),
-        wasteRes.json(),
-      ]);
-      if (profileData.success) setProfile(profileData.data?.profile || {});
-      if (subData.success) setSubscriptionTier(subData.data?.tier || 'FREE');
-      if (wasteData.success) setWaste(wasteData.data);
-    } catch {
-      // non-fatal
+      if (profileRes.status === 'fulfilled') setProfile(profileRes.value?.profile || {});
+      if (subRes.status === 'fulfilled') setSubscriptionTier(subRes.value?.tier || 'FREE');
+      if (wasteRes.status === 'fulfilled') setWaste(wasteRes.value);
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, [api]);
 
   useEffect(() => {
     load();
@@ -91,11 +84,7 @@ export default function ProfileScreen() {
       : [...current, label];
     setProfile(prev => ({ ...prev, [field]: next }));
     try {
-      await fetch(`${API_URL}/users/profile`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile: { [field]: next } }),
-      });
+      await api.client.patch('/users/profile', { profile: { [field]: next } });
     } catch {
       Alert.alert('Error', 'Failed to update preference.');
     }
@@ -118,15 +107,9 @@ export default function ProfileScreen() {
           text: 'Upgrade',
           onPress: async () => {
             try {
-              const res = await fetch(`${API_URL}/subscription/upgrade`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              const data = await res.json();
-              if (data.success) {
-                setSubscriptionTier('PREMIUM');
-                Alert.alert('Welcome to Premium', 'Your account has been upgraded.');
-              }
+              await api.subscription.upgrade();
+              setSubscriptionTier('PREMIUM');
+              Alert.alert('Welcome to Premium', 'Your account has been upgraded.');
             } catch {
               Alert.alert('Error', 'Failed to upgrade. Please try again.');
             }

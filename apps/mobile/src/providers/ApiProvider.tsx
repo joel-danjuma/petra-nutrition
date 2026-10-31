@@ -1,30 +1,20 @@
 import React, { ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  ApiClient,
-  StoreProvider,
-  configureAuthStorage,
-  initializeStores,
-} from '@petra/shared';
+import { fetch } from 'expo/fetch';
+import { StoreProvider, configureAuthStorage, createPetraClient } from '@petra/shared';
 import { API_URL } from '../config/api';
 
-// Created once at module load, never per-render: a fresh ApiClient on every
-// render would hand the store a new, token-less client and silently drop the
-// user's session at the HTTP layer.
-const apiClient = new ApiClient({
-  baseURL: API_URL,
-  timeout: 30000,
-  onTokenExpired: () => {
-    console.log('Token expired - user needs to re-authenticate');
-  },
-  onUnauthorized: () => {
-    console.log('Unauthorized access - redirecting to login');
-  },
-});
-
-// Inject the API into the store before anything renders. This is synchronous
-// and touches no mounted component, so module scope is the right place for it.
-initializeStores(apiClient);
+// Created once at module load, never per-render, and registered for the stores
+// before anything renders. This is synchronous and touches no mounted
+// component, so module scope is the right place for it.
+//
+// `expo/fetch` rather than React Native's global fetch: it is the one that can
+// hand back a streaming response body, which chat needs.
+//
+// No `onSignedOut`: the client clears the auth store when a session cannot be
+// refreshed, and the root layout's `Stack.Protected` guards already route a
+// signed-out user to sign-in off `isAuthenticated`.
+createPetraClient({ baseUrl: API_URL, fetchImpl: fetch });
 
 let hydrationStarted = false;
 
@@ -54,5 +44,5 @@ interface ApiProviderProps {
 }
 
 export function ApiProvider({ children }: ApiProviderProps) {
-  return <StoreProvider apiClient={apiClient}>{children}</StoreProvider>;
+  return <StoreProvider>{children}</StoreProvider>;
 }

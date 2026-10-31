@@ -11,7 +11,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CalendarDays, Lock } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { isPremium, useAuth, useAuthStore } from '@petra/shared';
+import {
+  GENERATION_TIMEOUT_MS,
+  errorMessage,
+  isPremium,
+  useApi,
+  useAuth,
+} from '@petra/shared';
 
 import { color, fontSize, radius, space, type } from '../../src/theme';
 import { Button } from '../../src/components/ui/Button';
@@ -19,7 +25,6 @@ import { Card } from '../../src/components/ui/Card';
 import { Chip } from '../../src/components/ui/Chip';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { Text } from '../../src/components/ui/Text';
-import { API_URL } from '../../src/config/api';
 
 interface PlanMeal {
   id: string;
@@ -47,7 +52,7 @@ interface PlanDay {
 
 export default function PlanScreen() {
   const { user } = useAuth();
-  const token = useAuthStore(state => state.token);
+  const api = useApi();
   // Via the shared helper: the API returns 'PREMIUM' and this compared
   // against 'premium', so it was always false and locked every premium user out.
   const premium = isPremium(user);
@@ -63,11 +68,11 @@ export default function PlanScreen() {
   const fetchPlan = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/meal-plans?limit=1`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.success) setMeals(data.data?.mealPlans?.[0]?.meals ?? []);
+      const data = await api.client.get<{ mealPlans?: { meals?: PlanMeal[] }[] }>(
+        '/meal-plans',
+        { params: { limit: 1 } }
+      );
+      setMeals(data.mealPlans?.[0]?.meals ?? []);
     } catch {
       Alert.alert('Error', 'Failed to load your meal plan.');
     } finally {
@@ -103,22 +108,17 @@ export default function PlanScreen() {
     }
     setIsGenerating(true);
     try {
-      const res = await fetch(`${API_URL}/meal-plans/generate`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: numDays, preferences }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setShowGenerateModal(false);
-        setDays('3');
-        setPreferences('');
-        fetchPlan();
-      } else {
-        throw new Error(data.error?.message || 'Generation failed');
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to generate meal plan.');
+      await api.client.post(
+        '/meal-plans/generate',
+        { days: numDays, preferences },
+        { timeoutMs: GENERATION_TIMEOUT_MS }
+      );
+      setShowGenerateModal(false);
+      setDays('3');
+      setPreferences('');
+      fetchPlan();
+    } catch (error) {
+      Alert.alert('Error', errorMessage(error, 'Failed to generate meal plan.'));
     } finally {
       setIsGenerating(false);
     }

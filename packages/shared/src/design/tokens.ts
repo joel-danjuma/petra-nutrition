@@ -75,6 +75,17 @@ export const semantic = {
   successOn: color.white,
 } as const;
 
+/**
+ * The only translucencies sanctioned over a full-bleed dark surface
+ * (`tokens/app-semantic.css`, `--app-on-dark-*`). Anything else invents an
+ * undocumented value.
+ */
+export const onDark = {
+  muted: 'rgba(255, 255, 255, 0.62)',
+  surface: 'rgba(255, 255, 255, 0.06)',
+  hairline: 'rgba(255, 255, 255, 0.14)',
+} as const;
+
 /* ----------------------------------------------------------------- spacing */
 
 /** Base unit 4px; everything snaps to 4-multiples. */
@@ -90,11 +101,66 @@ export const space = {
   section: 96,
 } as const;
 
+/**
+ * The one structural breakpoint in the redesign (`petra-redesign.dc.html`):
+ * below it the marketing nav collapses to a menu sheet and the app swaps its
+ * side rail for a bottom tab bar. Everything else is fluid.
+ */
+export const breakpoint = {
+  nav: 900,
+} as const;
+
+/**
+ * Fluid values for the web, consolidated from the redesign's per-element
+ * `clamp()`s. Web-only: React Native has no viewport units.
+ */
+export const fluid = {
+  /** home hero headline */
+  textHero: 'clamp(34px, 5.2vw, 56px)',
+  /** page h1 on every other marketing page */
+  textDisplay: 'clamp(34px, 5vw, 52px)',
+  /** section heading, app page title */
+  textSection: 'clamp(26px, 3.4vw, 36px)',
+  /** card / signature-card headline */
+  textCard: 'clamp(22px, 2.6vw, 28px)',
+  /** the lede under a headline */
+  textLede: 'clamp(16px, 1.6vw, 19px)',
+  /** cook mode step instruction */
+  textCook: 'clamp(26px, 3.6vw, 38px)',
+  /** cook mode step number */
+  textCookNum: 'clamp(64px, 9vw, 112px)',
+
+  /** page side gutter, marketing */
+  gutter: 'clamp(20px, 4vw, 48px)',
+  /** page side gutter, app */
+  gutterApp: 'clamp(16px, 3.5vw, 40px)',
+  /** vertical padding of an editorial band (scales the 96px section rhythm) */
+  band: 'clamp(56px, 8vw, 96px)',
+  /** space above a hero */
+  heroTop: 'clamp(40px, 7vw, 88px)',
+  /** inside a card */
+  cardPad: 'clamp(20px, 3vw, 28px)',
+  /** inside a signature card (scales the 48px signature padding) */
+  cardPadLg: 'clamp(28px, 4.5vw, 48px)',
+  /** between grid items */
+  gap: 'clamp(20px, 3vw, 32px)',
+  /** between the two columns of a split section */
+  gapLg: 'clamp(28px, 5vw, 64px)',
+} as const;
+
 export const layout = {
   containerMax: 1280,
   containerPad: 48,
   navHeight: 64,
   railWidth: 240,
+  /** marketing header (the redesign's 68px bar) */
+  headerHeight: 68,
+  /** app bottom tab bar, excluding the safe-area inset */
+  tabBarHeight: 64,
+  /** the app's content column */
+  appMax: 1080,
+  /** chat message column */
+  readingMax: 720,
 } as const;
 
 /* ------------------------------------------------------------------ radius */
@@ -147,11 +213,21 @@ export const fontSize = {
   titleLg: 24,
   titleMd: 20,
   titleSm: 18,
+  /** card headings and recipe titles in the product UI */
+  lead: 17,
   labelMd: 16,
   button: 16,
+  /** the product UI's running text, list rows and nav links */
+  bodyLg: 15,
   bodyMd: 14,
   caption: 14,
+  /** secondary lines: quantities, due dates, metadata */
+  labelSm: 13,
   legal: 13.12,
+  /** the uppercase eyebrow label */
+  eyebrow: 12,
+  /** tab-bar labels */
+  micro: 11,
   pricingDisplay: 44.8,
   pricingSection: 28,
   pricingCardTitle: 20,

@@ -49,6 +49,16 @@ export const agentContextSchema = z.object({
   allergies: z.array(z.string()).default([]),
   activeMealPlan: z.string().optional(),
   lastRecipeSearch: z.string().optional(),
+  /**
+   * The API could not read the caller's profile, so `allergies` and
+   * `dietaryRestrictions` may be missing things the user declared.
+   *
+   * The turn still goes ahead: refusing to answer because Postgres hiccupped
+   * is worse than answering with a stated caveat. What it must not do is
+   * answer *silently*, as if an empty allergy list were the truth — so the
+   * agent turns this flag into a compromise the reader sees.
+   */
+  profileUnavailable: z.boolean().optional(),
 });
 
 export const chatResponseTypeSchema = z.enum([
@@ -228,12 +238,6 @@ export const chatRequestSchema = z.object({
   context: agentContextSchema.optional(),
   options: z
     .object({
-      /**
-       * Force the large model. Normally left unset: the agent decides from the
-       * message itself, and defaulting to the fast model is what keeps the
-       * daily token budget from being drained in an afternoon.
-       */
-      advancedModel: z.boolean().optional(),
       maxRetrieved: z.number().int().min(0).max(20).optional(),
       /**
        * Which graph thread this turn belongs to — the API's chat session id.
@@ -302,12 +306,6 @@ export const streamEventSchema = z.discriminatedUnion('event', [
 ]);
 
 /* ---------------------------------------------------------------- recipes */
-
-export const generateRecipeRequestSchema = z.object({
-  ingredients: z.array(z.string()).min(1),
-  preferences: z.unknown().optional(),
-  user: agentUserSchema.optional(),
-});
 
 /**
  * Structured extraction over an imported recipe.
@@ -412,23 +410,6 @@ export const retrieveResponseSchema = z.object({
   recipes: z.array(retrievedRecipeSchema),
 });
 
-/* ------------------------------------------------------------ meal plans */
-
-export const generateMealPlanRequestSchema = z.object({
-  days: z.number().int().min(1).max(30),
-  preferences: z.unknown().optional(),
-  context: agentContextSchema.optional(),
-  user: agentUserSchema,
-});
-
-/* ------------------------------------------------------- tips & nutrition */
-
-export const cookingTipsRequestSchema = z.object({ topic: z.string().min(1) });
-
-export const analyzeNutritionRequestSchema = z.object({
-  foodItems: z.array(z.string()).min(1),
-});
-
 /* ---------------------------------------------------------------- vision */
 
 /** Mirrors `RecognitionResult` in the agent's vision service. */
@@ -486,15 +467,11 @@ export type GeneratedRecipe = z.infer<typeof generatedRecipeSchema>;
 export type IndexRebuildRequest = z.infer<typeof indexRebuildRequestSchema>;
 export type IndexRebuildResponse = z.infer<typeof indexRebuildResponseSchema>;
 export type SaveGeneratedRecipeRequest = z.infer<typeof saveGeneratedRecipeRequestSchema>;
-export type GenerateRecipeRequest = z.infer<typeof generateRecipeRequestSchema>;
 export type EnrichRecipeRequest = z.infer<typeof enrichRecipeRequestSchema>;
 export type EnrichRecipeResponse = z.infer<typeof enrichRecipeResponseSchema>;
 export type RetrieveRequest = z.infer<typeof retrieveRequestSchema>;
 export type RetrievedRecipe = z.infer<typeof retrievedRecipeSchema>;
 export type RetrieveResponse = z.infer<typeof retrieveResponseSchema>;
-export type GenerateMealPlanRequest = z.infer<typeof generateMealPlanRequestSchema>;
-export type CookingTipsRequest = z.infer<typeof cookingTipsRequestSchema>;
-export type AnalyzeNutritionRequest = z.infer<typeof analyzeNutritionRequestSchema>;
 export type DetectedPantryItem = z.infer<typeof detectedPantryItemSchema>;
 export type VisionResponse = z.infer<typeof visionResponseSchema>;
 
@@ -505,4 +482,43 @@ export const visionRequestSchema = z.object({
 });
 
 export type VisionRequest = z.infer<typeof visionRequestSchema>;
+
+/* ---------------------------------------------------------------- receipt */
+
+/**
+ * `POST /v1/vision/receipt` — read a shopping receipt into pantry items.
+ *
+ * A separate endpoint rather than a `context` of `/vision/pantry-items`
+ * because the shape differs (many items, not one), and that response is
+ * consumed as a single object today. Additive: nothing existing changes.
+ */
+export const receiptRequestSchema = z.object({
+  /** Base64 image payload, without a data: URI prefix. */
+  image: z.string().min(1),
+});
+
+export const receiptItemSchema = z.object({
+  /** The food as a person would say it ("Greek yoghurt"), not the till code. */
+  name: z.string().min(1),
+  category: z.string(),
+  brand: z.string().optional(),
+  quantity: z.number().positive().optional(),
+  unit: z.string().optional(),
+  /**
+   * Days until it typically turns, from the purchase date. An estimate unless
+   * a date was printed — the user reviews it before anything is saved.
+   */
+  expiresInDays: z.number().int().min(0).max(3650).optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+export const receiptResponseSchema = z.object({
+  items: z.array(receiptItemSchema),
+  store: z.string().optional(),
+});
+
+export type ReceiptRequest = z.infer<typeof receiptRequestSchema>;
+export type ReceiptItem = z.infer<typeof receiptItemSchema>;
+export type ReceiptResponse = z.infer<typeof receiptResponseSchema>;
 export type AgentHealth = z.infer<typeof agentHealthSchema>;
+export * from './frames';

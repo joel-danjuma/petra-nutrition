@@ -12,20 +12,20 @@
  * independently. The prompt is the request; this is the enforcement.
  */
 
-const STOP = new Set([
-  'the', 'and', 'for', 'with', 'into', 'fresh', 'chopped', 'sliced', 'diced',
-  'large', 'small', 'medium', 'finely', 'roughly', 'free', 'range', 'plain',
-]);
+import { ingredientWords } from '@petra/food-measures';
 
-/** Strip plurals and packaging words so "Chicken Thighs" matches "chicken thigh". */
+/**
+ * The content tokens of a name or a sentence, so "Chicken Thighs" matches
+ * "chicken thigh" and "Anchovies" matches the `anchovy` term below.
+ *
+ * The plural rule, synonyms and preparation words are `@petra/food-measures`'
+ * — the same identity the API's pantry match and shopping list use. This used
+ * to strip any trailing "es", which turned "apples" into "appl" and needed a
+ * misspelt `anchovie` in the fish list to keep "anchovies" blocked. Words of
+ * two letters or fewer carry no ingredient and are dropped.
+ */
 export function normalise(name: string): string[] {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2)
-    .map(w => (w.endsWith('es') ? w.slice(0, -2) : w.endsWith('s') ? w.slice(0, -1) : w))
-    .filter(w => !STOP.has(w));
+  return ingredientWords(name).filter(w => w.length > 2);
 }
 
 /**
@@ -46,7 +46,7 @@ export const ALLERGEN_TERMS: Record<string, string[]> = {
     'calamari', 'octopus', 'cockle', 'whelk', 'crustacean', 'mollusc', 'surimi',
   ],
   fish: [
-    'fish', 'anchovy', 'anchovie', 'salmon', 'tuna', 'cod', 'haddock', 'mackerel',
+    'fish', 'anchovy', 'salmon', 'tuna', 'cod', 'haddock', 'mackerel',
     'sardine', 'trout', 'bass', 'halibut', 'monkfish', 'pollock', 'tilapia',
     'kipper', 'worcestershire',
   ],

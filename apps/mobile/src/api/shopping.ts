@@ -1,4 +1,4 @@
-import { request } from './request';
+import { requireApiEndpoints } from '@petra/shared';
 
 /**
  * The shopping list, and what it means to add to it.
@@ -6,6 +6,11 @@ import { request } from './request';
  * "The active list" is defined once, here, because two screens need to agree on
  * it: the shopping screen shows only the most recent list, so a recipe that
  * added to any other one would look like it had done nothing at all.
+ *
+ * Through the shared client's untyped calls rather than its typed
+ * `shoppingLists` methods: those take the strict schema types, and these rows
+ * are the looser shape the screens hold. Failures reject with an `ApiError`,
+ * which is what makes a refused write visible — see `errorMessage`.
  */
 
 export interface ShoppingItem {
@@ -40,7 +45,9 @@ export interface NewShoppingItem {
 
 /** The most recent list, or null when the user has never had one. */
 export async function loadActiveList(): Promise<ShoppingListData | null> {
-  const data = await request<{ shoppingLists?: ShoppingListData[] }>('/shopping-lists?limit=1');
+  const data = await requireApiEndpoints().client.get<{
+    shoppingLists?: ShoppingListData[];
+  }>('/shopping-lists', { params: { limit: 1 } });
   return data?.shoppingLists?.[0] ?? null;
 }
 
@@ -50,10 +57,10 @@ export async function setItemCompleted(
   item: ShoppingItem,
   isCompleted: boolean
 ): Promise<ShoppingListData> {
-  return request<ShoppingListData>(`/shopping-lists/${listId}/items`, {
-    method: 'PATCH',
-    body: JSON.stringify({ items: [{ ...item, isCompleted }] }),
-  });
+  return requireApiEndpoints().client.patch<ShoppingListData>(
+    `/shopping-lists/${listId}/items`,
+    { items: [{ ...item, isCompleted }] }
+  );
 }
 
 const key = (name: string, unit: string) =>
@@ -81,10 +88,10 @@ export async function addItemsToActiveList(
 
   // A finished shop is not somewhere to append: the user would never see it.
   if (!active || active.isCompleted) {
-    const list = await request<ShoppingListData>('/shopping-lists', {
-      method: 'POST',
-      body: JSON.stringify({ name: listName, items }),
-    });
+    const list = await requireApiEndpoints().client.post<ShoppingListData>(
+      '/shopping-lists',
+      { name: listName, items }
+    );
     return { list, added: items.length };
   }
 
@@ -105,10 +112,10 @@ export async function addItemsToActiveList(
 
   if (!payload.length) return null;
 
-  const list = await request<ShoppingListData>(`/shopping-lists/${active.id}/items`, {
-    method: 'PATCH',
-    body: JSON.stringify({ items: payload }),
-  });
+  const list = await requireApiEndpoints().client.patch<ShoppingListData>(
+    `/shopping-lists/${active.id}/items`,
+    { items: payload }
+  );
 
   return { list, added };
 }

@@ -102,6 +102,8 @@ packages/
   shared/           Shared types, API client, Zustand stores, design tokens
   agent-contract/   Zod wire contract between the API and the agent
   service-kit/      Logger and HTTP error semantics, shared by both services
+  food-measures/    Ingredient identity (keys, synonyms, coverage, staples) and
+                    quantity arithmetic, shared by the agent, the API and shared
 docker/       Dockerfiles (api, agent, web) and compose files
 scripts/      Design-token generation and deployment automation
 .github/workflows/ci-cd.yml  GitHub Actions CI/CD
@@ -138,14 +140,20 @@ import them, so a contract drift is a type error at build time rather than a
 malformed body in production.
 
 Endpoints (all under `/v1`, all requiring `X-Internal-Key`):
-`chat`, `chat/stream`, `recipes/retrieve`, `recipes/generate`, `recipes/enrich`,
-`meal-plans/generate`, `cooking-tips`, `nutrition/analyze`,
-`vision/pantry-items`, `index/rebuild`. `/health` is unauthenticated.
+`chat`, `chat/stream`, `recipes/retrieve`, `recipes/enrich`,
+`vision/pantry-items`, `vision/receipt`, `index/rebuild`. `/health` is
+unauthenticated.
 
 `chatResponseSchema` carries optional `generatedRecipe`, `nutrition`,
 `assumptions` and `compromises`; the SSE envelope adds `node` progress frames
 and an `interrupt` frame. All additive and optional, so a client that ignores
 them sees the behaviour it saw before.
+
+SSE frames are written and read **only** through the contract's codec
+(`frames.ts`: `encodeFrame`, `createFrameDecoder`). The agent encodes with it,
+the API decodes the `done` frame with it, and clients decode with it. Never
+hand-format or hand-parse `event:`/`data:` lines. The decoder uses no Node APIs,
+so it runs in Node, browsers and React Native alike.
 
 ### The agent's Prisma schema is generated
 
@@ -160,9 +168,19 @@ model at boot, turning a drifted column into a failed deploy.
 
 Express + TypeScript, layered:
 - `src/routes/` — Route definitions (thin, delegates to controllers)
-- `src/controllers/` — Request handling and response shaping
+- `src/controllers/` — Request handling and response shaping. The chat
+  controller is HTTP framing only; a chat turn lives in
+  `services/chat-turn.ts` (`ChatTurns.reply` / `ChatTurns.stream`), which owns
+  persisting both messages, the one reply→stored-metadata mapping, and the
+  `AgentPort` seam (`agentClient` in production, a fake agent in tests)
 - `src/services/` — Domain logic, plus `agent-client.ts`, the typed HTTP client
-  for the agent (keep-alive pool, tiered timeouts, no retries on generation)
+  for the agent (keep-alive pool, tiered timeouts, no retries on generation),
+  and `caller-context.ts`, the **only** producer of an agent request's `user`
+  and `context`. Controllers never assemble an `AgentContext` by hand: the
+  profile's allergies are the floor, request additions can only be unioned on,
+  the pantry is PREMIUM-only, and a failed profile read sets
+  `profileUnavailable` (the agent then tells the user allergies weren't checked)
+  rather than sending an empty allergy list as though it were true.
 - `src/middleware/` — Auth (JWT), validation (Zod), rate limiting, error handling
 - `src/database/` — Prisma client, query helpers, transactions
 - `prisma/schema.prisma` — **The** source of truth for the database schema
@@ -179,11 +197,11 @@ Express + TypeScript, layered:
   per-node config block to a chat model. Nodes name a role, not a model, and
   never import a provider SDK. Groq is the only adapter registered; an
   OpenRouter adapter and an eval harness slot in behind the same interface.
-- `src/llm/chat-prompt.ts` — The system prompt and the reply parser, shared by
-  the graph's respond node and the single-shot endpoints.
-- `src/llm/groq.ts` — The legacy `groq-sdk` client, still serving
-  `/v1/cooking-tips`, `/v1/nutrition/analyze`, `/v1/meal-plans/generate` and
-  `/v1/recipes/generate` — single model calls that gain nothing from a graph.
+  It is the **only** way to reach a model — enrichment included — and the
+  per-node table is the only model-choice policy. Tests register `FakeModel`
+  with `setModel(node, …)`.
+- `src/llm/chat-prompt.ts` — The system prompt and the reply parser used by the
+  graph's respond node.
 - `src/llm/enrich.ts` — Structured recipe extraction and its plausibility
   checks. Its nutrition now routes through `src/nutrition` so the recipe
   screen's macros and the chat's cannot disagree about the same dish.
@@ -193,7 +211,10 @@ Express + TypeScript, layered:
 - `src/retrieval/` — Hybrid retrieval (RRF over pantry overlap, lexical,
   semantic). Candidate generation is indexed SQL (`sql.ts`); fusion stays in
   TypeScript. `terms.ts` holds the allergen/diet vocabulary that both retrieval
-  and generation filter on.
+  and generation filter on. Name normalisation, plurals, synonyms, pantry
+  coverage, staples and SQL term patterns all come from `@petra/food-measures`
+  — never add a local normaliser; the API, agent and apps must agree on what
+  "the same ingredient" means.
 - `src/cache/` — ioredis handle. Nothing here may fail a turn: every operation
   swallows its errors and reports a miss.
 - `src/vision/` — Gemini Pro Vision food recognition
@@ -225,7 +246,8 @@ merge case takes: same constraints, same validator, different starting point.
   state is checkpointed. Hence no `Set`, no `Map`, no functions — the constraint
   set is derived on demand rather than stored, and the runtime callbacks live in
   `turn-context.ts` (async-local storage) instead.
-- `constraints.ts` — The `STAPLES` list, and the allowed/blocked sets. The
+- `constraints.ts` — The allowed/blocked sets (`STAPLES` itself now lives in
+  `@petra/food-measures`). The
   allowed set is about usefulness (a dish cookable tonight); the blocked set is
   about safety and reuses `expandAllergen`/`expandDiet` from retrieval.
 - `validate.ts` — Code, not a model. Modelled on `validateEnrichment`: reject,
@@ -250,6 +272,18 @@ Next.js 14 App Router with:
 - `src/lib/` — Client-side utilities
 - Styling: Tailwind CSS
 - State: Zustand stores from `@petra/shared`
+- HTTP: every call goes through the shared fetch-based client built by
+  `createPetraClient` (`packages/shared/src/api`) — token, envelope, one
+  `ApiError` shape and 401 refresh live there. Mobile passes `expo/fetch`. Do
+  not add raw `fetch` calls or read the token by hand in either app.
+- Chat: both apps run a turn through `startChatTurn` from `@petra/shared`
+  (`packages/shared/src/chat/`) — it streams, decodes with the contract's codec,
+  and resolves to a typed `ChatReply`; history maps through
+  `replyFromStoredMessage`. Reply shapes (`GeneratedRecipe`,
+  `NutritionBreakdown`, …) come from `@petra/agent-contract`; never redeclare
+  them in an app. It falls back to `/chat/message` only when the stream request
+  itself is refused — once the API has answered 200 it has stored the user's
+  message, so a broken stream is an error, not a resend.
 - Forms: React Hook Form + Zod validation
 
 ### Database Schema (Prisma)

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { User, AuthResponse, Login, CreateUser } from '../types';
-import { getApiEndpoints, requireApiEndpoints } from '../api';
+import { User, Login, CreateUser } from '../types';
+import { errorMessage } from '../api/errors';
+import { getApiEndpoints, requireApiEndpoints } from '../api/registry';
 
 interface AuthState {
   user: User | null;
@@ -80,29 +81,22 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const api = requireApiEndpoints();
 
-          const response = await api.auth.login(credentials);
-          
-          if (response.success && response.data) {
-            const { user, token, refreshToken } = response.data;
-            
-            // Update API client with new token
-            api.client.setAuthToken(token);
-            
-            set({
-              user,
-              token,
-              refreshToken,
-              isAuthenticated: true,
-              isLoading: false,
-              error: null,
-            });
-          } else {
-            throw new Error(response.error?.message || 'Login failed');
-          }
-        } catch (error: any) {
+          // The client reads the token from here at call time, so setting it
+          // is all signing in takes — there is no second copy to update.
+          const { user, token, refreshToken } = await api.auth.login(credentials);
+
+          set({
+            user,
+            token,
+            refreshToken,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
           set({
             isLoading: false,
-            error: error.message || 'Login failed',
+            error: errorMessage(error, 'Login failed'),
           });
           throw error;
         }
@@ -114,28 +108,20 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const api = requireApiEndpoints();
 
-          const response = await api.auth.register(userData);
-          
-          if (response.success && response.data) {
-            const { user, token, refreshToken } = response.data;
-            
-            api.client.setAuthToken(token);
-            
-            set({
-              user,
-              token,
-              refreshToken,
-              isAuthenticated: true,
-              isLoading: false,
-              error: null,
-            });
-          } else {
-            throw new Error(response.error?.message || 'Registration failed');
-          }
-        } catch (error: any) {
+          const { user, token, refreshToken } = await api.auth.register(userData);
+
+          set({
+            user,
+            token,
+            refreshToken,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
           set({
             isLoading: false,
-            error: error.message || 'Registration failed',
+            error: errorMessage(error, 'Registration failed'),
           });
           throw error;
         }
@@ -146,8 +132,9 @@ export const useAuthStore = create<AuthStore>()(
         // state even if the app never finished wiring its API client.
         const api = getApiEndpoints();
         if (api) {
-          api.client.setAuthToken(null);
-          // Call logout endpoint to invalidate server-side session
+          // Invalidate the server-side session. The client reads the token
+          // synchronously as the call starts, so clearing it just below does
+          // not strip it from this request.
           api.auth.logout().catch(() => {
             // Ignore errors on logout
           });
@@ -162,37 +149,33 @@ export const useAuthStore = create<AuthStore>()(
         });
       },
 
+      /**
+       * Exchange the refresh token for a new session.
+       *
+       * Called by the API client when a request comes back 401, not by
+       * screens. It only throws on failure: the client owns what happens next
+       * (sign out once, however many requests were waiting), and signing out
+       * here as well would do it twice.
+       */
       refreshAuth: async () => {
         const { refreshToken } = get();
         if (!refreshToken) {
           throw new Error('No refresh token available');
         }
 
-        try {
-          const api = requireApiEndpoints();
+        const api = requireApiEndpoints();
+        const {
+          user,
+          token,
+          refreshToken: newRefreshToken,
+        } = await api.auth.refreshToken(refreshToken);
 
-          const response = await api.auth.refreshToken();
-          
-          if (response.success && response.data) {
-            const { user, token, refreshToken: newRefreshToken } = response.data;
-            
-            api.client.setAuthToken(token);
-            
-            set({
-              user,
-              token,
-              refreshToken: newRefreshToken,
-              isAuthenticated: true,
-            });
-          } else {
-            // Refresh failed, logout user
-            get().logout();
-            throw new Error('Session expired');
-          }
-        } catch (error: any) {
-          get().logout();
-          throw error;
-        }
+        set({
+          user,
+          token,
+          refreshToken: newRefreshToken,
+          isAuthenticated: true,
+        });
       },
 
       updateProfile: async (updates: Partial<User>) => {
@@ -206,21 +189,16 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const api = requireApiEndpoints();
 
-          const response = await api.users.updateProfile(updates);
-          
-          if (response.success && response.data) {
-            set({
-              user: response.data,
-              isLoading: false,
-              error: null,
-            });
-          } else {
-            throw new Error(response.error?.message || 'Profile update failed');
-          }
-        } catch (error: any) {
+          const user = await api.users.updateProfile(updates);
+          set({
+            user,
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
           set({
             isLoading: false,
-            error: error.message || 'Profile update failed',
+            error: errorMessage(error, 'Profile update failed'),
           });
           throw error;
         }
