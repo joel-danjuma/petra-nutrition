@@ -30,7 +30,7 @@ export const validatePassword = (password: string): {
     errors.push('Password must contain at least one number');
   }
   
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
     errors.push('Password must contain at least one special character');
   }
   
@@ -41,7 +41,7 @@ export const validatePassword = (password: string): {
     /[a-z]/.test(password),
     /[A-Z]/.test(password),
     /\d/.test(password),
-    /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
     password.length >= 12,
   ];
   

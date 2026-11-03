@@ -26,12 +26,33 @@ export default [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // ignoreRestSiblings: `const { passwordHash, ...safeUser } = user` is
+      // how this codebase omits fields, and the omitted names are the point.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
+      // Still bans `namespace` in runtime code; allows the ambient
+      // `declare global { namespace Express { ... } }` augmentation.
+      '@typescript-eslint/no-namespace': ['error', { allowDeclarations: true }],
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       'prefer-const': 'error',
       'no-var': 'error',
+    },
+  },
+  {
+    files: ['**/__tests__/**/*.{ts,tsx}', '**/*.{test,spec}.{ts,tsx}'],
+    languageOptions: {
+      globals: { ...globals.jest },
+    },
+  },
+  {
+    // React Native defines __DEV__ at bundle time.
+    files: ['apps/mobile/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: { __DEV__: 'readonly' },
     },
   },
   // ---------------------------------------------------------------------
