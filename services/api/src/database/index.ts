@@ -1,10 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
 // Global instance to prevent multiple connections in development
 declare global {
-  var __prisma: PrismaClient | undefined;
+  // Typed from the factory so `$on` knows which log events were enabled.
+  var __prisma: ReturnType<typeof createPrismaClient> | undefined;
 }
 
 // Create Prisma client with logging
@@ -102,7 +103,7 @@ export const checkDatabaseHealth = async (): Promise<boolean> => {
 
 // Transaction helper
 export const withTransaction = async <T>(
-  callback: (tx: PrismaClient) => Promise<T>
+  callback: (tx: Prisma.TransactionClient) => Promise<T>
 ): Promise<T> => {
   return prisma.$transaction(callback);
 };

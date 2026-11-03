@@ -14,7 +14,8 @@
     "sync-schema": "node scripts/sync-schema.mjs",
     "sync-schema:check": "node scripts/sync-schema.mjs --check",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
-    "embed": "tsx src/scripts/embed-recipes.ts"
+    "embed": "tsx src/scripts/embed-recipes.ts",
+    "verify-read-model": "tsx src/scripts/verify-read-model.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.11",

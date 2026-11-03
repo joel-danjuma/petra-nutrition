@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { SubscriptionController } from '../controllers/subscription';
-import { validate, validators } from '../middleware/validation';
 import { asyncHandler } from '../middleware/error';
 
 const router = Router();

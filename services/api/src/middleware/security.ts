@@ -38,13 +38,13 @@ export const createRateLimit = (options: {
     // Store rate limit data in Redis
     store: {
       incr: async (key: string) => {
-        const current = await cache.get(key);
+        const current = await cache.get<string>(key);
         const count = current ? parseInt(current) + 1 : 1;
         await cache.set(key, count.toString(), options.windowMs / 1000);
         return { totalHits: count, resetTime: new Date(Date.now() + options.windowMs) };
       },
       decrement: async (key: string) => {
-        const current = await cache.get(key);
+        const current = await cache.get<string>(key);
         if (current) {
           const count = Math.max(0, parseInt(current) - 1);
           await cache.set(key, count.toString(), options.windowMs / 1000);
@@ -127,7 +127,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
 
   // Override res.end to log response
   const originalEnd = res.end;
-  res.end = function(chunk?: any, encoding?: any) {
+  res.end = function (this: Response, chunk?: any, encoding?: any) {
     const duration = Date.now() - startTime;
     
     logger.info('Request completed', {
@@ -149,7 +149,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
       });
     }
 
-    originalEnd.call(this, chunk, encoding);
+    return originalEnd.call(this, chunk, encoding);
   };
 
   next();
@@ -179,7 +179,7 @@ export const sanitizeInput = (req: Request, res: Response, next: NextFunction) =
     if (obj && typeof obj === 'object') {
       const sanitized: any = {};
       for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
           sanitized[key] = sanitizeObject(obj[key]);
         }
       }
@@ -227,7 +227,7 @@ export const bruteForceProtection = (options: {
     const key = `brute_force:${identifier}`;
 
     try {
-      const attempts = await cache.get(key);
+      const attempts = await cache.get<string>(key);
       const attemptCount = attempts ? parseInt(attempts) : 0;
 
       if (attemptCount >= options.maxAttempts) {
