@@ -220,13 +220,13 @@ export const trackApiUsage = async (userId: string, endpoint: string, method: st
   
   try {
     // Increment usage count
-    const current = await cache.get(key) || '0';
+    const current = (await cache.get<string>(key)) || '0';
     const usage = parseInt(current) + 1;
     await cache.set(key, usage.toString(), 86400); // Expire after 24 hours
 
     // Track endpoint-specific usage
     const endpointKey = `api_usage:${userId}:${endpoint}:${today}`;
-    const endpointCurrent = await cache.get(endpointKey) || '0';
+    const endpointCurrent = (await cache.get<string>(endpointKey)) || '0';
     const endpointUsage = parseInt(endpointCurrent) + 1;
     await cache.set(endpointKey, endpointUsage.toString(), 86400);
 

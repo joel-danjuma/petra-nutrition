@@ -7,7 +7,8 @@ on:
     branches: [ main, dev ]
 
 env:
-  NODE_VERSION: '18'
+  # pnpm 11 needs Node >= 22.13.
+  NODE_VERSION: '22'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -47,10 +48,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # Match the pnpm that writes pnpm-lock.yaml. pnpm 9 ignores the settings
+    # in pnpm-workspace.yaml (shamefullyHoist, allowBuilds), so packages that
+    # rely on hoisted types, like @petra/shared's @types/react, fail to build.
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 11.11.0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -188,7 +192,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 11.11.0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -355,7 +359,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 11.11.0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
