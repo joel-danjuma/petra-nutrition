@@ -124,6 +124,87 @@ jobs:
         files: ./services/api/coverage/lcov.info,./services/agent/coverage/lcov.info,./apps/web/coverage/lcov.info
         fail_ci_if_error: true
 
+  # Path filtering is per job, not per workflow: a workflow-level `paths:`
+  # would skip the TypeScript pipeline on Python-only changes and vice versa.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      agent-py: ${{ steps.filter.outputs.agent-py }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Filter paths
+      id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          agent-py:
+            - 'services/agent-py/**'
+            - 'packages/agent-contract/**'
+
+  agent-py:
+    name: Python agent
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.agent-py == 'true'
+
+    defaults:
+      run:
+        working-directory: services/agent-py
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Python itself comes from .python-version; uv installs it on demand.
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: services/agent-py/uv.lock
+
+    - name: Install dependencies
+      run: uv sync --locked
+
+    - name: Lint
+      run: uv run ruff check .
+
+    - name: Check formatting
+      run: uv run ruff format --check .
+
+    - name: Type check
+      run: uv run mypy src tests
+
+    - name: Run tests
+      run: uv run pytest
+
+    # contract.schema.json and contract.py are generated from the zod contract,
+    # so a contract change that was never regenerated fails here rather than as
+    # a 422 between the API and this agent. Both files are committed; only the
+    # contract package's Node dependencies are installed.
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'pnpm'
+
+    - name: Install contract dependencies
+      working-directory: .
+      run: pnpm install --frozen-lockfile --filter @petra/agent-contract
+
+    - name: Check the generated contract is up to date
+      run: |
+        make contract
+        git diff --exit-code
+
   build:
     name: Build ${{ matrix.service }} image
     runs-on: ubuntu-latest
@@ -330,7 +411,7 @@ jobs:
   notify-failure:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [test, build, deploy-staging, deploy-production]
+    needs: [test, agent-py, build, deploy-staging, deploy-production]
     if: failure()
 
     steps:
