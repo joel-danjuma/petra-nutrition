@@ -91,7 +91,7 @@ jobs:
     # Proves the agent's projected read model actually matches the migrated
     # database, not just the schema file it was generated from.
     - name: Verify the agent's read model against the migrated database
-      run: pnpm --filter @petra/agent exec tsx -e "import('./src/db').then(m => m.connectDatabase()).then(() => process.exit(0))"
+      run: pnpm --filter @petra/agent run verify-read-model
       env:
         AGENT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/petra_ai_test
         GROQ_API_KEY: test-key-not-used-for-this-check
