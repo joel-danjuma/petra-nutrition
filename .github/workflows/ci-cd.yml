@@ -122,11 +122,14 @@ jobs:
       env:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:3001/api
 
+    # Non-blocking until Codecov is actually wired up: no test step above runs
+    # with --coverage yet, and there is no CODECOV_TOKEN secret, so a missing
+    # upload must not fail the build.
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
       with:
         files: ./services/api/coverage/lcov.info,./services/agent/coverage/lcov.info,./apps/web/coverage/lcov.info
-        fail_ci_if_error: true
+        fail_ci_if_error: false
 
   # Path filtering is per job, not per workflow: a workflow-level `paths:`
   # would skip the TypeScript pipeline on Python-only changes and vice versa.
