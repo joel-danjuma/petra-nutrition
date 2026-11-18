@@ -22,7 +22,8 @@ import httpx
 # Longer than this and the user is better served by "try again in N seconds"
 # than by a turn that sits silent.
 MAX_RETRY_AFTER_S = 10.0
-# Full-jitter exponential backoff, for refusals that name no wait.
+# Jittered exponential backoff, for refusals that name no wait. Not quite "full"
+# jitter: the wait never drops below a tenth of the ceiling, so it is never ~0.
 BACKOFF_BASE_S = 0.25
 BACKOFF_CAP_S = 2.0
 
