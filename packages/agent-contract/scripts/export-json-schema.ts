@@ -45,10 +45,10 @@ const { definitions: emitted } = zodToJsonSchema(contract.agentHealthSchema, {
   // Requests are validated on arrival, so a field with a zod default is
   // optional on the wire.
   effectStrategy: 'input',
-  // zod objects strip unknown keys rather than rejecting them. Omitting
-  // `additionalProperties` leaves the pydantic models on their default, which
-  // is the same: ignore. `false` would forbid what the TypeScript agent
-  // accepts, and `true` would keep keys it drops.
+  // Mirrors zod per object: a .strict() schema (every request) becomes
+  // `additionalProperties: false`, which pydantic generates as extra='forbid';
+  // any other object (every response) omits it, keeping pydantic's default of
+  // ignore, which is what zod's stripping does.
   removeAdditionalStrategy: 'strict',
   allowedAdditionalProperties: undefined,
 }) as { definitions: Record<string, unknown> };

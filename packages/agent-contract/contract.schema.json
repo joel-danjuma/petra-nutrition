@@ -50,7 +50,8 @@
         "profileUnavailable": {
           "type": "boolean"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "AgentHealth": {
       "type": "object",
@@ -125,7 +126,8 @@
       },
       "required": [
         "id"
-      ]
+      ],
+      "additionalProperties": false
     },
     "ChatMessage": {
       "type": "object",
@@ -140,7 +142,8 @@
       "required": [
         "role",
         "content"
-      ]
+      ],
+      "additionalProperties": false
     },
     "ChatRequest": {
       "type": "object",
@@ -171,13 +174,15 @@
               "minLength": 1,
               "maxLength": 200
             }
-          }
+          },
+          "additionalProperties": false
         }
       },
       "required": [
         "messages",
         "user"
-      ]
+      ],
+      "additionalProperties": false
     },
     "ChatResponse": {
       "type": "object",
@@ -332,7 +337,8 @@
               "name",
               "amount",
               "unit"
-            ]
+            ],
+            "additionalProperties": false
           }
         },
         "instructions": {
@@ -350,7 +356,8 @@
             "required": [
               "step",
               "instruction"
-            ]
+            ],
+            "additionalProperties": false
           }
         }
       },
@@ -359,7 +366,8 @@
         "servings",
         "ingredients",
         "instructions"
-      ]
+      ],
+      "additionalProperties": false
     },
     "EnrichRecipeResponse": {
       "type": "object",
@@ -594,7 +602,8 @@
           "maxItems": 100,
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "IndexRebuildResponse": {
       "type": "object",
@@ -772,7 +781,8 @@
       },
       "required": [
         "image"
-      ]
+      ],
+      "additionalProperties": false
     },
     "ReceiptResponse": {
       "type": "object",
@@ -827,7 +837,8 @@
         "ownerId": {
           "type": "string"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "RetrieveResponse": {
       "type": "object",
@@ -1075,7 +1086,8 @@
       },
       "required": [
         "image"
-      ]
+      ],
+      "additionalProperties": false
     }
   }
 }

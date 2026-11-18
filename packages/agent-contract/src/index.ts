@@ -19,10 +19,17 @@ export const AGENT_INTERNAL_KEY_HEADER = 'x-internal-key';
 
 export const chatRoleSchema = z.enum(['system', 'user', 'assistant']);
 
+/*
+ * Request schemas are .strict(): a field the agent doesn't know is a 400, not
+ * silently dropped, so a typo'd or misplaced field (an allergy, say) can't
+ * vanish on its way in. Response schemas stay lenient, so an older API can
+ * still read a newer agent's reply. A new request field therefore needs the
+ * agent deployed before the API that sends it.
+ */
 export const chatMessageSchema = z.object({
   role: chatRoleSchema,
   content: z.string(),
-});
+}).strict();
 
 /**
  * The caller's identity, asserted by the API. The agent does not verify JWTs —
@@ -32,7 +39,7 @@ export const chatMessageSchema = z.object({
 export const agentUserSchema = z.object({
   id: z.string(),
   subscriptionTier: z.enum(['FREE', 'PREMIUM']).default('FREE'),
-});
+}).strict();
 
 /**
  * What the API knows about the user and passes down. Note there is no
@@ -59,7 +66,7 @@ export const agentContextSchema = z.object({
    * agent turns this flag into a compromise the reader sees.
    */
   profileUnavailable: z.boolean().optional(),
-});
+}).strict();
 
 export const chatResponseTypeSchema = z.enum([
   'text',
@@ -250,8 +257,9 @@ export const chatRequestSchema = z.object({
        */
       threadId: z.string().min(1).max(200).optional(),
     })
+    .strict()
     .optional(),
-});
+}).strict();
 
 /* ------------------------------------------------------------ SSE envelope */
 
@@ -319,10 +327,12 @@ export const enrichRecipeRequestSchema = z.object({
   cuisine: z.string().nullish(),
   servings: z.number().int().positive(),
   ingredients: z.array(
-    z.object({ name: z.string(), amount: z.number(), unit: z.string() })
+    z.object({ name: z.string(), amount: z.number(), unit: z.string() }).strict()
   ),
-  instructions: z.array(z.object({ step: z.number().int(), instruction: z.string() })),
-});
+  instructions: z.array(
+    z.object({ step: z.number().int(), instruction: z.string() }).strict()
+  ),
+}).strict();
 
 /**
  * Every field here has already been through the agent's plausibility checks —
@@ -360,7 +370,7 @@ export const enrichRecipeResponseSchema = z.object({
  */
 export const indexRebuildRequestSchema = z.object({
   recipeIds: z.array(z.string()).max(100).default([]),
-});
+}).strict();
 
 export const indexRebuildResponseSchema = z.object({
   invalidated: z.boolean(),
@@ -389,7 +399,7 @@ export const retrieveRequestSchema = z.object({
    * It matches `recipes.createdById`, a column already in its read model.
    */
   ownerId: z.string().optional(),
-});
+}).strict();
 
 export const retrievedRecipeSchema = z.object({
   id: z.string(),
@@ -479,7 +489,7 @@ export const visionRequestSchema = z.object({
   /** Base64 image payload, without a data: URI prefix. */
   image: z.string().min(1),
   context: z.string().default('pantry_item'),
-});
+}).strict();
 
 export type VisionRequest = z.infer<typeof visionRequestSchema>;
 
@@ -495,7 +505,7 @@ export type VisionRequest = z.infer<typeof visionRequestSchema>;
 export const receiptRequestSchema = z.object({
   /** Base64 image payload, without a data: URI prefix. */
   image: z.string().min(1),
-});
+}).strict();
 
 export const receiptItemSchema = z.object({
   /** The food as a person would say it ("Greek yoghurt"), not the till code. */

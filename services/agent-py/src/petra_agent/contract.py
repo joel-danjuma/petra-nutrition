@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 from typing import Annotated, Any, Literal
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 from enum import StrEnum
 
 
@@ -12,6 +12,9 @@ class PetraAgentContract(RootModel[Any]):
 
 
 class AgentContext(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     userPreferences: Any | None = None
     currentPantryItems: list[str] = []
     pantryNames: list[str] = []
@@ -64,11 +67,17 @@ class SubscriptionTier(StrEnum):
 
 
 class AgentUser(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     id: str
     subscriptionTier: SubscriptionTier = SubscriptionTier.FREE
 
 
 class Options(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     maxRetrieved: Annotated[int | None, Field(ge=0, le=20)] = None
     threadId: Annotated[str | None, Field(max_length=200, min_length=1)] = None
 
@@ -106,17 +115,26 @@ class DetectedPantryItem(BaseModel):
 
 
 class Ingredient(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     name: str
     amount: float
     unit: str
 
 
 class Instruction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     step: int
     instruction: str
 
 
 class EnrichRecipeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     title: str
     cuisine: str | None = None
     servings: Annotated[int, Field(gt=0)]
@@ -194,6 +212,9 @@ class GraphNode(StrEnum):
 
 
 class IndexRebuildRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     recipeIds: Annotated[list[str], Field(max_length=100)] = []
 
 
@@ -249,6 +270,9 @@ class ReceiptItem(BaseModel):
 
 
 class ReceiptRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     image: Annotated[str, Field(min_length=1)]
 
 
@@ -258,6 +282,9 @@ class ReceiptResponse(BaseModel):
 
 
 class RetrieveRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     query: str | None = None
     pantry: list[str] = []
     allergies: list[str] = []
@@ -321,16 +348,25 @@ class StreamEvent5(BaseModel):
 
 
 class VisionRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     image: Annotated[str, Field(min_length=1)]
     context: str = "pantry_item"
 
 
 class ChatMessage(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     role: ChatRole
     content: str
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     messages: Annotated[list[ChatMessage], Field(min_length=1)]
     user: AgentUser
     context: AgentContext | None = None
