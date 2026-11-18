@@ -98,3 +98,41 @@ def test_warnings_name_the_missing_optional_services(env: pytest.MonkeyPatch) ->
     assert any("REDIS_URL" in w for w in warnings)
     assert any("FDC_API_KEY" in w for w in warnings)
     assert any("INTERNAL_API_KEY" in w for w in warnings)
+
+
+def test_groq_transport_defaults(env: pytest.MonkeyPatch) -> None:
+    settings = load()
+
+    assert settings.groq_base_url == "https://api.groq.com/openai/v1"
+    assert settings.groq_connect_timeout_seconds == 5.0
+    # Under the API's 60 s chat timeout, so the agent answers before the caller gives up.
+    assert settings.groq_read_timeout_seconds == 45.0
+    assert settings.groq_max_attempts == 3
+
+
+def test_groq_transport_is_configurable(env: pytest.MonkeyPatch) -> None:
+    env.setenv("GROQ_CONNECT_TIMEOUT_SECONDS", "2.5")
+    env.setenv("GROQ_READ_TIMEOUT_SECONDS", "20")
+    env.setenv("GROQ_MAX_ATTEMPTS", "1")
+
+    settings = load()
+
+    assert settings.groq_connect_timeout_seconds == 2.5
+    assert settings.groq_read_timeout_seconds == 20.0
+    assert settings.groq_max_attempts == 1
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("GROQ_CONNECT_TIMEOUT_SECONDS", "0"),
+        ("GROQ_READ_TIMEOUT_SECONDS", "-1"),
+        ("GROQ_MAX_ATTEMPTS", "0"),
+        ("GROQ_MAX_ATTEMPTS", "6"),
+    ],
+)
+def test_groq_transport_rejects_nonsense(env: pytest.MonkeyPatch, name: str, value: str) -> None:
+    env.setenv(name, value)
+
+    with pytest.raises(ValidationError):
+        load()
