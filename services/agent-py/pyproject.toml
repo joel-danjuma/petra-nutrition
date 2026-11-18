@@ -25,10 +25,12 @@ build-backend = "uv_build"
 dev = [
     "asyncpg-stubs>=0.32.0",
     "datamodel-code-generator>=0.87.0",
+    "jsonschema>=4.26.0",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1",
     "ruff>=0.17.3",
+    "types-jsonschema>=4.26.0.20261006",
 ]
 
 [tool.ruff]
