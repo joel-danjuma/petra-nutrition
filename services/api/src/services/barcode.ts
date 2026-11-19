@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { config } from '../config';
 import { logger } from '../utils/logger';
 import { cache } from '../config/redis';
 
@@ -261,7 +260,7 @@ export class BarcodeService {
   }
 
   // Get product suggestions based on partial barcode
-  async getBarcodeSuggestions(partialBarcode: string): Promise<string[]> {
+  async getBarcodeSuggestions(_partialBarcode: string): Promise<string[]> {
     // This would typically involve a more sophisticated search
     // For now, return empty array as most APIs don't support partial lookups
     return [];

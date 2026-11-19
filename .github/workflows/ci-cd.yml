@@ -7,7 +7,8 @@ on:
     branches: [ main, dev ]
 
 env:
-  NODE_VERSION: '18'
+  # pnpm 11 needs Node >= 22.13.
+  NODE_VERSION: '22'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -47,10 +48,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # Match the pnpm that writes pnpm-lock.yaml. pnpm 9 ignores the settings
+    # in pnpm-workspace.yaml (shamefullyHoist, allowBuilds), so packages that
+    # rely on hoisted types, like @petra/shared's @types/react, fail to build.
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 11.11.0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -87,7 +91,7 @@ jobs:
     # Proves the agent's projected read model actually matches the migrated
     # database, not just the schema file it was generated from.
     - name: Verify the agent's read model against the migrated database
-      run: pnpm --filter @petra/agent exec tsx -e "import('./src/db').then(m => m.connectDatabase()).then(() => process.exit(0))"
+      run: pnpm --filter @petra/agent run verify-read-model
       env:
         AGENT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/petra_ai_test
         GROQ_API_KEY: test-key-not-used-for-this-check
@@ -118,11 +122,14 @@ jobs:
       env:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:3001/api
 
+    # Non-blocking until Codecov is actually wired up: no test step above runs
+    # with --coverage yet, and there is no CODECOV_TOKEN secret, so a missing
+    # upload must not fail the build.
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
       with:
         files: ./services/api/coverage/lcov.info,./services/agent/coverage/lcov.info,./apps/web/coverage/lcov.info
-        fail_ci_if_error: true
+        fail_ci_if_error: false
 
   # Path filtering is per job, not per workflow: a workflow-level `paths:`
   # would skip the TypeScript pipeline on Python-only changes and vice versa.
@@ -188,7 +195,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 11.11.0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -355,7 +362,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: 9
+        version: 11.11.0
 
     - name: Setup Node.js
       uses: actions/setup-node@v4

@@ -1,4 +1,3 @@
-import { prisma } from '../database';
 import { cache } from '../config/redis';
 import { logger } from '../utils/logger';
 
@@ -63,7 +62,7 @@ export class AuthService {
     }, 30 * 24 * 60 * 60); // 30 days
   }
 
-  async getKnownDevices(userId: string): Promise<any[]> {
+  async getKnownDevices(_userId: string): Promise<any[]> {
     // This would require a more sophisticated implementation
     // For now, return empty array
     return [];
