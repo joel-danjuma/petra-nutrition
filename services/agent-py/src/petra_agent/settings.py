@@ -44,6 +44,20 @@ class Settings(BaseSettings):
         default="openai/gpt-oss-120b", validation_alias="GROQ_MODEL_SMART"
     )
 
+    groq_base_url: str = Field(
+        default="https://api.groq.com/openai/v1", validation_alias="GROQ_BASE_URL"
+    )
+    groq_connect_timeout_seconds: float = Field(
+        default=5.0, gt=0, validation_alias="GROQ_CONNECT_TIMEOUT_SECONDS"
+    )
+    # The longest silence tolerated mid-reply: a whole completion, or the gap
+    # between two streamed chunks. Under the API's 60 s chat timeout.
+    groq_read_timeout_seconds: float = Field(
+        default=45.0, gt=0, validation_alias="GROQ_READ_TIMEOUT_SECONDS"
+    )
+    # Including the first. Only calls that cannot have been billed are retried.
+    groq_max_attempts: int = Field(default=3, ge=1, le=5, validation_alias="GROQ_MAX_ATTEMPTS")
+
     internal_api_key: SecretStr | None = Field(default=None, validation_alias="INTERNAL_API_KEY")
 
     redis_url: SecretStr | None = Field(default=None, validation_alias="REDIS_URL")
