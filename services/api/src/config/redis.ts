@@ -7,7 +7,6 @@ let redisClient: Redis | null = null;
 export const setupRedis = async (): Promise<Redis> => {
   try {
     redisClient = new Redis(config.REDIS_URL, {
-      retryDelayOnFailover: 100,
       enableReadyCheck: false,
       maxRetriesPerRequest: null,
       lazyConnect: true,

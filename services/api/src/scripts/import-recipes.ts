@@ -66,7 +66,7 @@ export function splitInstructions(blob: string): string[] {
   // Explicit step markers win when present.
   if (/^\s*step\s*\d+/im.test(text)) {
     return text
-      .split(/^\s*step\s*\d+\s*[:.\)]?\s*$/gim)
+      .split(/^\s*step\s*\d+\s*[:.)]?\s*$/gim)
       .map(s => s.replace(/\s+/g, ' ').trim())
       .filter(Boolean);
   }

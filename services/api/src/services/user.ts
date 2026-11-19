@@ -1,5 +1,4 @@
 import { prisma } from '../database';
-import { logger } from '../utils/logger';
 
 export class UserService {
   async findByEmail(email: string) {
