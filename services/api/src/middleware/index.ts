@@ -92,7 +92,7 @@ export const setupMiddleware = (app: express.Application): void => {
     legacyHeaders: false,
     keyGenerator: (req) => {
       // Use user ID if authenticated, otherwise use IP
-      return req.user?.id || req.ip;
+      return req.user?.id || req.ip || 'unknown';
     },
   });
 
