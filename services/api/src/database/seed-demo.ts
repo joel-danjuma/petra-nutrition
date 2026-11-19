@@ -288,7 +288,6 @@ export async function seedDemoAccount(prisma: PrismaClient) {
   const pickLunch = (i: number) => lunches[i % lunches.length];
   const pickDinner = (i: number) => dinners[i % dinners.length];
   const pickMain = (i: number) => mains[i % mains.length];
-  const pick = (i: number) => pool[i % pool.length];
 
   /* ------------------------------------------------------------- meal plan */
   const plan = await prisma.mealPlan.create({
@@ -380,7 +379,7 @@ export async function seedDemoAccount(prisma: PrismaClient) {
   await prisma.mealCompletion.createMany({ data: completions });
 
   /* --------------------------------------------------------- shopping list */
-  const list = await prisma.shoppingList.create({
+  await prisma.shoppingList.create({
     data: {
       userId: demo.id,
       name: 'This week',

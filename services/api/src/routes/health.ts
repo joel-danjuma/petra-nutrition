@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { getHealthStatus, PerformanceMonitor, ErrorTracker } from '../utils/monitoring';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error';
+import { prisma } from '../database';
+import { getRedisClient } from '../config/redis';
 
 const router = Router();
 const monitor = PerformanceMonitor.getInstance();
@@ -19,12 +21,9 @@ router.get('/health', asyncHandler(async (req, res) => {
 router.get('/ready', asyncHandler(async (req, res) => {
   try {
     // Quick checks for essential services
-    const { prisma } = require('../database');
-    const { cache } = require('../config/redis');
-    
     await Promise.all([
       prisma.$queryRaw`SELECT 1`,
-      cache.ping(),
+      getRedisClient().ping(),
     ]);
     
     res.status(200).json({
@@ -121,9 +120,6 @@ router.get('/debug', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Not found' });
   }
   
-  const { prisma } = require('../database');
-  const { cache } = require('../config/redis');
-  
   try {
     // Get database connection info
     const dbInfo = await prisma.$queryRaw`
@@ -134,7 +130,7 @@ router.get('/debug', asyncHandler(async (req, res) => {
     `;
     
     // Get Redis info
-    const redisInfo = await cache.info();
+    const redisInfo = await getRedisClient().info();
     
     // Get environment variables (filtered)
     const filteredEnv = Object.keys(process.env)
