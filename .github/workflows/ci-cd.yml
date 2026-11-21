@@ -88,6 +88,32 @@ jobs:
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/petra_ai_test
 
+    # The `agent` schema, its search view and the petra_agent_ro role live only
+    # in raw SQL, outside anything Prisma models, so nothing else would notice
+    # if they broke. The check queries the view as the role, writes and
+    # searches an embedding, and asserts the role is refused on `public`.
+    #
+    # The replay applies every migration to a second database in the same
+    # cluster, where the role already exists — what Prisma's shadow database
+    # does on every `migrate dev`. Roles are cluster-wide, so an unguarded
+    # CREATE ROLE passes the first run and fails this one.
+    - name: Check the agent schema and role on the fresh database
+      run: |
+        psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+          -f services/api/prisma/checks/agent-schema.sql
+        psql "$ADMIN_URL" -v ON_ERROR_STOP=1 \
+          -c 'CREATE DATABASE petra_ai_replay'
+        DATABASE_URL="$REPLAY_URL" \
+          pnpm --filter @petra/api exec prisma migrate deploy
+        psql "$REPLAY_URL" -v ON_ERROR_STOP=1 \
+          -f services/api/prisma/checks/agent-schema.sql
+        psql "$ADMIN_URL" -v ON_ERROR_STOP=1 \
+          -c 'DROP DATABASE petra_ai_replay'
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/petra_ai_test
+        REPLAY_URL: postgresql://postgres:postgres@localhost:5432/petra_ai_replay
+        ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
     # Proves the agent's projected read model actually matches the migrated
     # database, not just the schema file it was generated from.
     - name: Verify the agent's read model against the migrated database
